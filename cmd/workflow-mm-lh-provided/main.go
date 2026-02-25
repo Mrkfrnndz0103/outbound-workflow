@@ -248,6 +248,10 @@ func main() {
 	cycle := 1
 	for {
 		if err = runCycle(sigCtx, cycle); err != nil {
+			if sigCtx.Err() != nil && errors.Is(err, context.Canceled) {
+				logger.Printf("watch mode stopped")
+				return
+			}
 			logger.Printf("workflow cycle error: %v", err)
 		}
 		cycle++
