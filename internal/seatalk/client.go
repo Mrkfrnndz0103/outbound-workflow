@@ -75,6 +75,55 @@ func (c *Client) SendTextToEmployee(ctx context.Context, employeeCode string, co
 	return c.requestWithAuthRetry(ctx, http.MethodPost, "/messaging/v2/single_chat", requestBody)
 }
 
+func (c *Client) SendTextToGroup(ctx context.Context, groupID string, content string, format int) error {
+	if strings.TrimSpace(groupID) == "" {
+		return errors.New("groupID is required")
+	}
+	if strings.TrimSpace(content) == "" {
+		return errors.New("content is required")
+	}
+	if format == 0 {
+		format = 1
+	}
+	if format != 1 && format != 2 {
+		return fmt.Errorf("invalid text format %d (allowed: 1 markdown, 2 plain text)", format)
+	}
+
+	requestBody := map[string]any{
+		"group_id": groupID,
+		"message": map[string]any{
+			"tag": "text",
+			"text": map[string]any{
+				"format":  format,
+				"content": content,
+			},
+		},
+	}
+
+	return c.requestWithAuthRetry(ctx, http.MethodPost, "/messaging/v2/group_chat", requestBody)
+}
+
+func (c *Client) SendImageToGroupBase64(ctx context.Context, groupID string, base64Content string) error {
+	if strings.TrimSpace(groupID) == "" {
+		return errors.New("groupID is required")
+	}
+	if strings.TrimSpace(base64Content) == "" {
+		return errors.New("base64 image content is required")
+	}
+
+	requestBody := map[string]any{
+		"group_id": groupID,
+		"message": map[string]any{
+			"tag": "image",
+			"image": map[string]any{
+				"content": base64Content,
+			},
+		},
+	}
+
+	return c.requestWithAuthRetry(ctx, http.MethodPost, "/messaging/v2/group_chat", requestBody)
+}
+
 func (c *Client) requestWithAuthRetry(ctx context.Context, method string, path string, body any) error {
 	token, err := c.getAccessToken(ctx)
 	if err != nil {

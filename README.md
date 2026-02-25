@@ -80,6 +80,7 @@ Commands:
 Default workflow list includes:
 
 - `workflow_1_mm_lh_provided`
+- `workflow_2_ob_pending_dispatch`
 
 ### System account mode
 
@@ -202,6 +203,70 @@ Status output:
 
 ```powershell
 Get-Content .\data\workflow1-mm-lh-provided-status.json
+```
+
+## Workflow 2: OB Pending Dispatch Snapshot (Bot Group Chat)
+
+`workflow_2_ob_pending_dispatch` reads Google Sheet:
+
+- Spreadsheet: `17cvCc6ffMXNs6JYnpMYvDO_V8nBCRKRm3G78oINj_yo`
+- Tab: `Backlogs Summary`
+- Trigger cell: `G4`
+- Snapshot range: `C2:S64`
+
+Trigger behavior:
+
+- Stores latest `G4` value in a local state file.
+- Sends only when `G4` changes from the stored value.
+- First run baselines `G4` (no send) unless `WF2_BOOTSTRAP_SEND_EXISTING=true`.
+
+Send behavior:
+
+- Uses SeaTalk bot API endpoint `POST /messaging/v2/group_chat` (not system account webhook).
+- Sends text first:
+  - `<mention-tag target="seatalk://user?id=0"/> OB Pending for Dispatch as of {local_time}`
+  - Local time format: `3:04 PM Jan-02` in `WF2_TIMEZONE` (default `Asia/Manila`)
+- Renders `C2:S64` using Google Sheet effective styling (colors, merged cells, alignment, borders) and sends as Base64 `message.tag=image`.
+- Enforces SeaTalk image limit (`<= 5MB` Base64): PNG first, JPEG fallback if needed.
+
+Required env for this workflow:
+
+- `WF2_SEATALK_GROUP_ID`
+- SeaTalk app credentials via either:
+  - `WF2_SEATALK_APP_ID` + `WF2_SEATALK_APP_SECRET`
+  - or fallback to `SEATALK_APP_ID` + `SEATALK_APP_SECRET`
+- Google credentials via one of:
+  - `WF2_GOOGLE_CREDENTIALS_FILE` (or `GOOGLE_APPLICATION_CREDENTIALS`)
+  - `WF2_GOOGLE_CREDENTIALS_JSON`
+
+Optional env:
+
+- `WF2_STATE_FILE` (default `data/workflow2-ob-pending-dispatch-state.json`)
+- `WF2_STATUS_FILE` (default `data/workflow2-ob-pending-dispatch-status.json`, set `none` to disable)
+- `WF2_CONTINUOUS` (default `true`)
+- `WF2_POLL_INTERVAL_SECONDS` (default `10`)
+- `WF2_DRY_RUN` (default `false`)
+- `WF2_BOOTSTRAP_SEND_EXISTING` (default `false`)
+- `WF2_TIMEZONE` (default `Asia/Manila`)
+- `WF2_IMAGE_MAX_WIDTH_PX` (default `3000`)
+- `WF2_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
+- `WF2_RENDER_SCALE` (default `2`, range `1-4`)
+- `WF2_ENABLE_HEALTH_SERVER` (default `true`)
+- `WF2_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
+
+Run one-shot locally:
+
+```powershell
+$env:WF2_CONTINUOUS = "false"
+go run ./cmd/workflow-ob-pending-dispatch
+```
+
+Run in watch mode locally:
+
+```powershell
+$env:WF2_CONTINUOUS = "true"
+$env:WF2_POLL_INTERVAL_SECONDS = "5"
+go run ./cmd/workflow-ob-pending-dispatch
 ```
 
 ## Render deployment (24/7)
