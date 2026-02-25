@@ -864,11 +864,13 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 		totalHeight += h
 	}
 
+	layoutScale := 1.0
 	if maxWidth > 0 && totalWidth > maxWidth {
 		fitRatio := float64(maxWidth-1) / float64(totalWidth-1)
 		if fitRatio < 0.35 {
 			fitRatio = 0.35
 		}
+		layoutScale = fitRatio
 		totalWidth = 1
 		totalHeight = 1
 		for idx, w := range colWidths {
@@ -894,6 +896,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 
 	canvas := image.NewRGBA(image.Rect(0, 0, totalWidth, totalHeight))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{255, 255, 255, 255}}, image.Point{}, draw.Src)
+	borderScale := maxInt(int(math.Round(float64(renderScale)*layoutScale)), 1)
 
 	mergeMap := make([][]int, data.Rows)
 	for r := 0; r < data.Rows; r++ {
@@ -959,7 +962,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 					xOffsets[minInt(merge.EndCol, data.Cols)],
 					yOffsets[minInt(merge.EndRow, data.Rows)],
 				)
-				drawCellBorders(canvas, rect, b, renderScale)
+				drawCellBorders(canvas, rect, b, borderScale)
 				continue
 			}
 
@@ -970,7 +973,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 				xOffsets[c+1],
 				yOffsets[r+1],
 			)
-			drawCellBorders(canvas, rect, b, renderScale)
+			drawCellBorders(canvas, rect, b, borderScale)
 		}
 	}
 
@@ -988,7 +991,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 					xOffsets[minInt(merge.EndCol, data.Cols)],
 					yOffsets[minInt(merge.EndRow, data.Rows)],
 				)
-				drawCellText(canvas, rect, data.Cells[r][c], renderScale)
+				drawCellText(canvas, rect, data.Cells[r][c], renderScale, layoutScale)
 				continue
 			}
 			rect := image.Rect(
@@ -997,7 +1000,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 				xOffsets[c+1],
 				yOffsets[r+1],
 			)
-			drawCellText(canvas, rect, data.Cells[r][c], renderScale)
+			drawCellText(canvas, rect, data.Cells[r][c], renderScale, layoutScale)
 		}
 	}
 
@@ -1009,7 +1012,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 	return buf.Bytes(), nil
 }
 
-func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderScale int) {
+func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderScale int, layoutScale float64) {
 	text := strings.TrimSpace(cell.Text)
 	if text == "" {
 		return
@@ -1019,13 +1022,18 @@ func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderS
 	if fontSize <= 0 {
 		fontSize = 10
 	}
-	face := loadFace(cell.FontFamily, cell.Bold, cell.Italic, fontSize*float64(renderScale))
+	textScale := float64(renderScale) * layoutScale
+	if textScale <= 0 {
+		textScale = float64(renderScale)
+	}
+	face := loadFace(cell.FontFamily, cell.Bold, cell.Italic, fontSize*textScale)
 	if face == nil {
 		face = basicfont.Face7x13
 	}
 
-	paddingX := maxInt(4*renderScale, 4)
-	paddingY := maxInt(3*renderScale, 3)
+	paddingX := maxInt(int(math.Round(4*textScale)), 4)
+	paddingY := maxInt(int(math.Round(3*textScale)), 3)
+	decorationThickness := maxInt(int(math.Round(textScale)), 1)
 	maxTextWidth := rect.Dx() - (paddingX * 2)
 	if maxTextWidth <= 4 {
 		return
@@ -1089,15 +1097,15 @@ func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderS
 		d.DrawString(line)
 
 		if cell.Underline {
-			underlineY := minInt(y+maxInt(renderScale, 1), rect.Max.Y-1)
-			fillRect(dst, image.Rect(x, underlineY, minInt(x+textWidth, rect.Max.X-1), minInt(underlineY+maxInt(renderScale, 1), rect.Max.Y)), cell.Foreground)
+			underlineY := minInt(y+decorationThickness, rect.Max.Y-1)
+			fillRect(dst, image.Rect(x, underlineY, minInt(x+textWidth, rect.Max.X-1), minInt(underlineY+decorationThickness, rect.Max.Y)), cell.Foreground)
 		}
 		if cell.Strikethru {
 			strikeY := y - ascent/2
 			if strikeY < rect.Min.Y {
 				strikeY = rect.Min.Y
 			}
-			fillRect(dst, image.Rect(x, strikeY, minInt(x+textWidth, rect.Max.X-1), minInt(strikeY+maxInt(renderScale, 1), rect.Max.Y)), cell.Foreground)
+			fillRect(dst, image.Rect(x, strikeY, minInt(x+textWidth, rect.Max.X-1), minInt(strikeY+decorationThickness, rect.Max.Y)), cell.Foreground)
 		}
 	}
 }
