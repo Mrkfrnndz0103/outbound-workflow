@@ -56,6 +56,10 @@ type workflowConfig struct {
 	PollInterval          time.Duration
 	ForceSendAfter        time.Duration
 	GroupDefer            time.Duration
+	SendMinInterval       time.Duration
+	SendRetryMaxAttempts  int
+	SendRetryBaseDelay    time.Duration
+	SendRetryMaxDelay     time.Duration
 	HTTPTimeout           time.Duration
 }
 
@@ -291,6 +295,10 @@ func loadConfig() (workflowConfig, error) {
 	pollInterval := getDurationSeconds("WF1_POLL_INTERVAL_SECONDS", 10)
 	forceAfter := getDurationSeconds("WF1_FORCE_SEND_AFTER_SECONDS", 300)
 	groupDefer := getDurationSeconds("WF1_GROUP_DEFER_SECONDS", 20)
+	sendMinInterval := getDurationMillis("WF1_SEND_MIN_INTERVAL_MS", 1200)
+	sendRetryMaxAttempts := getIntEnv("WF1_SEND_RETRY_MAX_ATTEMPTS", 5)
+	sendRetryBaseDelay := getDurationMillis("WF1_SEND_RETRY_BASE_MS", 1000)
+	sendRetryMaxDelay := getDurationMillis("WF1_SEND_RETRY_MAX_MS", 30000)
 	selfPingInterval := getDurationSeconds("WF1_SELF_PING_INTERVAL_SECONDS", 300)
 	credsFile := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF1_GOOGLE_CREDENTIALS_FILE")),
@@ -340,6 +348,10 @@ func loadConfig() (workflowConfig, error) {
 		PollInterval:          pollInterval,
 		ForceSendAfter:        forceAfter,
 		GroupDefer:            groupDefer,
+		SendMinInterval:       sendMinInterval,
+		SendRetryMaxAttempts:  sendRetryMaxAttempts,
+		SendRetryBaseDelay:    sendRetryBaseDelay,
+		SendRetryMaxDelay:     sendRetryMaxDelay,
 		HTTPTimeout:           timeout,
 	}, nil
 }
@@ -559,6 +571,22 @@ func dispatchCandidates(
 		return
 	}
 
+	lastSendAttemptAt := time.Time{}
+	sendMessage := func(content string, atAll bool, meta string) error {
+		if cfg.SendMinInterval > 0 && !lastSendAttemptAt.IsZero() {
+			wait := cfg.SendMinInterval - time.Since(lastSendAttemptAt)
+			if wait > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(wait):
+				}
+			}
+		}
+		lastSendAttemptAt = time.Now()
+		return sendSeaTalkTextWithRetry(ctx, httpClient, cfg, content, atAll, meta, logger)
+	}
+
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].Row.RowNumber < candidates[j].Row.RowNumber
 	})
@@ -629,9 +657,13 @@ func dispatchCandidates(
 			continue
 		}
 
-		if sendErr := sendSeaTalkText(ctx, httpClient, cfg.SeaTalkWebhookURL, content, cfg.AtAll); sendErr != nil {
+		if sendErr := sendMessage(content, cfg.AtAll, "grouped rows="+candidateRowList(group)); sendErr != nil {
 			summary.Failed += len(group)
 			logger.Printf("send failed grouped=true rows=%s err=%v", candidateRowList(group), sendErr)
+			if isRateLimitError(sendErr) {
+				logger.Printf("rate limit active; stopping further sends for this cycle")
+				return
+			}
 			continue
 		}
 
@@ -661,9 +693,13 @@ func dispatchCandidates(
 			continue
 		}
 
-		if sendErr := sendSeaTalkText(ctx, httpClient, cfg.SeaTalkWebhookURL, content, atAll); sendErr != nil {
+		if sendErr := sendMessage(content, atAll, "row="+strconv.Itoa(candidate.Row.RowNumber)); sendErr != nil {
 			summary.Failed++
 			logger.Printf("send failed row=%d: %v", candidate.Row.RowNumber, sendErr)
+			if isRateLimitError(sendErr) {
+				logger.Printf("rate limit active; stopping further sends for this cycle")
+				return
+			}
 			continue
 		}
 
@@ -952,6 +988,95 @@ func saveStatus(path string, status workflowStatus) error {
 	return os.WriteFile(path, raw, 0o644)
 }
 
+type seatalkHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *seatalkHTTPError) Error() string {
+	return fmt.Sprintf("status=%d body=%s", e.StatusCode, e.Body)
+}
+
+type seatalkAPIError struct {
+	Code int
+	Msg  string
+}
+
+func (e *seatalkAPIError) Error() string {
+	return fmt.Sprintf("error_code=%d msg=%s", e.Code, e.Msg)
+}
+
+func isRateLimitError(err error) bool {
+	var httpErr *seatalkHTTPError
+	if errors.As(err, &httpErr) {
+		if httpErr.StatusCode == http.StatusTooManyRequests {
+			return true
+		}
+		if strings.Contains(strings.ToLower(httpErr.Body), "rate limit") {
+			return true
+		}
+	}
+	var apiErr *seatalkAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == 8
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "rate limit")
+}
+
+func sendSeaTalkTextWithRetry(
+	ctx context.Context,
+	client *http.Client,
+	cfg workflowConfig,
+	content string,
+	atAll bool,
+	meta string,
+	logger *log.Logger,
+) error {
+	maxAttempts := cfg.SendRetryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	delay := cfg.SendRetryBaseDelay
+	if delay <= 0 {
+		delay = 1 * time.Second
+	}
+	maxDelay := cfg.SendRetryMaxDelay
+	if maxDelay <= 0 {
+		maxDelay = 30 * time.Second
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		lastErr = sendSeaTalkText(ctx, client, cfg.SeaTalkWebhookURL, content, atAll)
+		if lastErr == nil {
+			return nil
+		}
+
+		if attempt == maxAttempts || !isRateLimitError(lastErr) {
+			return lastErr
+		}
+
+		logger.Printf(
+			"rate_limited meta=%s attempt=%d/%d backoff=%s err=%v",
+			meta,
+			attempt,
+			maxAttempts,
+			delay,
+			lastErr,
+		)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+	return lastErr
+}
+
 func sendSeaTalkText(ctx context.Context, client *http.Client, webhookURL, content string, atAll bool) error {
 	textBody := map[string]any{
 		"format":  defaultTextFormat,
@@ -988,7 +1113,10 @@ func sendSeaTalkText(ctx context.Context, client *http.Client, webhookURL, conte
 		return err
 	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("status=%d body=%s", res.StatusCode, string(rawResp))
+		return &seatalkHTTPError{
+			StatusCode: res.StatusCode,
+			Body:       string(rawResp),
+		}
 	}
 
 	var parsed systemAccountResponse
@@ -996,7 +1124,10 @@ func sendSeaTalkText(ctx context.Context, client *http.Client, webhookURL, conte
 		return fmt.Errorf("decode response: %w", err)
 	}
 	if parsed.Code != systemAccountOKCode {
-		return fmt.Errorf("error_code=%d msg=%s", parsed.Code, parsed.Msg)
+		return &seatalkAPIError{
+			Code: parsed.Code,
+			Msg:  parsed.Msg,
+		}
 	}
 	return nil
 }
@@ -1033,6 +1164,30 @@ func getDurationSeconds(key string, fallback int) time.Duration {
 		return time.Duration(fallback) * time.Second
 	}
 	return time.Duration(parsed) * time.Second
+}
+
+func getDurationMillis(key string, fallback int) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return time.Duration(fallback) * time.Millisecond
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return time.Duration(fallback) * time.Millisecond
+	}
+	return time.Duration(parsed) * time.Millisecond
+}
+
+func getIntEnv(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func loadSheetRows(ctx context.Context, cfg workflowConfig) ([]sheetRow, error) {

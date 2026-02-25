@@ -167,6 +167,10 @@ Optional env:
 - `WF1_POLL_INTERVAL_SECONDS` (default `10`)
 - `WF1_FORCE_SEND_AFTER_SECONDS` (default `300`)
 - `WF1_GROUP_DEFER_SECONDS` (default `20`)
+- `WF1_SEND_MIN_INTERVAL_MS` (default `1200`)
+- `WF1_SEND_RETRY_MAX_ATTEMPTS` (default `5`)
+- `WF1_SEND_RETRY_BASE_MS` (default `1000`)
+- `WF1_SEND_RETRY_MAX_MS` (default `30000`)
 - `WF1_ENABLE_HEALTH_SERVER` (default `false`)
 - `WF1_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF1_SELF_PING_URL` (optional; set to your public `/healthz` URL)
@@ -188,6 +192,7 @@ Send rule:
 - Force send: if `F` is already filled but `H/I` stay missing for 5 minutes, send once anyway.
 - Special case: if `F` contains `DOUBLE` or `DOUBLE REQUEST`, send:
   `Double Request!` + `{C} - {M}` and force `@All` mention via `at_all=true`.
+- Outbound sends are throttled/retried to handle SeaTalk rate limits (`429`, code `8`).
 
 Status output:
 
