@@ -1,0 +1,26 @@
+# Local env and secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+/google-credentials.json
+
+# Runtime data and logs
+data/*.json
+data/*.bak
+logs/
+*.log
+
+# Build/test artifacts
+bin/
+dist/
+*.exe
+*.test
+*.out
+
+# Temp work dirs
+_tmp_cs_bot_src/
+_tmp_openapi_demo/
