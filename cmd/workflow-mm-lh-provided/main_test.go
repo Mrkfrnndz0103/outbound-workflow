@@ -1,6 +1,10 @@
 package main
 
 import (
+	"context"
+	"io"
+	"log"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -155,5 +159,49 @@ func TestBuildDoubleRequestMessage(t *testing.T) {
 	want := "Double Request!\nLemery Hub,Taal Hub - Dock 40"
 	if got != want {
 		t.Fatalf("unexpected double request message:\nwant: %q\n got: %q", want, got)
+	}
+}
+
+func TestBaselineDoesNotResendOnNextCycle(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	cfg := workflowConfig{
+		BootstrapSendExisting: false,
+		DryRun:                true,
+		ForceSendAfter:        5 * time.Minute,
+	}
+	state := workflowState{
+		RowPlates:         map[string]string{},
+		RowFirstSeenAt:    map[string]string{},
+		RowReadyAt:        map[string]string{},
+		RowSentForPlate:   map[string]string{},
+		RowForcedForPlate: map[string]string{},
+	}
+	rows := []sheetRow{
+		{
+			RowNumber:         427,
+			RequestTime:       "2/25/2026 12:10:00",
+			Cluster:           "Cluster A",
+			PlateNumber:       "NIE 1506",
+			FleetSizeProvided: "6WH",
+			LHType:            "Wetlease",
+			ProvideTime:       "2/25/2026 12:25:08",
+			DockLabel:         "Dock 11",
+		},
+	}
+
+	first := processRows(context.Background(), cfg, &http.Client{}, rows, state, false, logger)
+	if first.Sent != 0 {
+		t.Fatalf("expected no sends on baseline cycle, got sent=%d", first.Sent)
+	}
+	if state.RowSentForPlate["427"] != "NIE 1506" {
+		t.Fatalf("expected baseline to mark row as sent for current plate, got %q", state.RowSentForPlate["427"])
+	}
+
+	second := processRows(context.Background(), cfg, &http.Client{}, rows, state, true, logger)
+	if second.Sent != 0 {
+		t.Fatalf("expected no resend on next cycle, got sent=%d", second.Sent)
+	}
+	if second.AlreadySentSkipped != 1 {
+		t.Fatalf("expected row to be skipped as already sent, got already_sent_skipped=%d", second.AlreadySentSkipped)
 	}
 }

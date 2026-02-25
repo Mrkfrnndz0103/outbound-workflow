@@ -51,7 +51,7 @@ services:
       - key: WF1_SHEET_TAB
         value: MM LH Provided
       - key: WF1_SHEET_RANGE
-        value: A427:M
+        value: A650:M
       - key: SEATALK_SYSTEM_WEBHOOK_URL
         sync: false
       - key: WF1_GOOGLE_CREDENTIALS_JSON

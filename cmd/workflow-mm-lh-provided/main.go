@@ -475,6 +475,9 @@ func processRows(
 			state.RowPlates[key] = currPlate
 			state.RowFirstSeenAt[key] = now.Format(time.RFC3339)
 			if !cfg.BootstrapSendExisting {
+				// Baseline existing rows on first sight so a restart does not resend history.
+				state.RowSentForPlate[key] = currPlate
+				delete(state.RowReadyAt, key)
 				summary.Ignored++
 				summary.BaselineSkipped++
 				if cfg.DebugLogSkips {
@@ -493,6 +496,8 @@ func processRows(
 
 			// First-ever run baseline: avoid sending historical already-filled rows unless explicitly enabled.
 			if !stateExists && !cfg.BootstrapSendExisting {
+				state.RowSentForPlate[key] = currPlate
+				delete(state.RowReadyAt, key)
 				summary.Ignored++
 				summary.BaselineSkipped++
 				if cfg.DebugLogSkips {
