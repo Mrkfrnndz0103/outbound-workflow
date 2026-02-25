@@ -1,0 +1,28 @@
+workflows:
+  workflow_1_mm_lh_provided:
+    command: go
+    args:
+      - run
+      - ./cmd/workflow-mm-lh-provided
+    timeout_seconds: 120
+    allow_extra_args: false
+
+  ping:
+    command: cmd
+    args:
+      - /C
+      - echo
+      - pong
+    timeout_seconds: 20
+    allow_extra_args: false
+
+  run_script:
+    command: powershell
+    args:
+      - -NoProfile
+      - -ExecutionPolicy
+      - Bypass
+      - -File
+      - scripts/workflow.ps1
+    timeout_seconds: 180
+    allow_extra_args: true

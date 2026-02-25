@@ -1,0 +1,159 @@
+package main
+
+import (
+	"testing"
+	"time"
+)
+
+func TestParseRow(t *testing.T) {
+	row := parseRow([]interface{}{
+		"NEW", "2026-02-20 10:00", "MNL", "10W", "OPS", "", "25", "LH-A", "2026-02-20 10:30", "", "", "", "Dock 11",
+	}, 5654)
+
+	if row.RowNumber != 5654 {
+		t.Fatalf("unexpected row number: %d", row.RowNumber)
+	}
+	if row.Cluster != "MNL" {
+		t.Fatalf("unexpected cluster: %q", row.Cluster)
+	}
+	if row.PlateNumber != "" {
+		t.Fatalf("expected empty plate number, got %q", row.PlateNumber)
+	}
+	if row.DockLabel != "Dock 11" {
+		t.Fatalf("unexpected dock label: %q", row.DockLabel)
+	}
+}
+
+func TestBuildMessage(t *testing.T) {
+	row := sheetRow{
+		RequestTime:       "2026-02-20 10:00",
+		Cluster:           "Taytay Hub",
+		PlateNumber:       "ABC1234",
+		FleetSizeProvided: "6WH",
+		LHType:            "Drylease",
+		ProvideTime:       "2026-02-20 10:30",
+		RequestedBy:       "Joan",
+		DockLabel:         "Dock 11",
+	}
+
+	got := buildMessage(row)
+	want := "<mention-tag target=\"seatalk://user?id=0\"/> For Docking\n\n      **Taytay Hub - Dock 11**\n      **Plate #: ABC1234**\n      6WH - Drylease\n      pvd_tme: 10:30:00 Feb-20"
+	if got != want {
+		t.Fatalf("unexpected message:\nwant: %q\n got: %q", want, got)
+	}
+}
+
+func TestHasRequiredMessageFields(t *testing.T) {
+	valid := sheetRow{
+		RequestTime:       "rq",
+		Cluster:           "cluster",
+		FleetSizeProvided: "10",
+		LHType:            "lh",
+		ProvideTime:       "pv",
+	}
+	if !valid.hasRequiredMessageFields() {
+		t.Fatalf("expected required fields to be valid")
+	}
+
+	invalid := valid
+	invalid.ProvideTime = ""
+	if invalid.hasRequiredMessageFields() {
+		t.Fatalf("expected required fields to be invalid")
+	}
+}
+
+func TestProvideTimeGroupingIgnoresSeconds(t *testing.T) {
+	first, ok := parseProvideTime("2/25/2026 12:25:06")
+	if !ok {
+		t.Fatalf("expected first provide time to parse")
+	}
+	second, ok := parseProvideTime("2/25/2026 12:25:22")
+	if !ok {
+		t.Fatalf("expected second provide time to parse")
+	}
+
+	if first.Truncate(time.Minute) != second.Truncate(time.Minute) {
+		t.Fatalf("expected times to match by minute")
+	}
+}
+
+func TestBuildMergedMessage(t *testing.T) {
+	rows := []sheetRow{
+		{
+			Cluster:           "SOC 11,SOC 8",
+			DockLabel:         "Dock 68",
+			PlateNumber:       "CBN 6469",
+			FleetSizeProvided: "6WH",
+			LHType:            "Wetlease",
+		},
+		{
+			Cluster:           "Gumaca Hub,San Narciso Hub,San Andres Hub",
+			DockLabel:         "Dock 75",
+			PlateNumber:       "CCK 4754",
+			FleetSizeProvided: "6WH",
+			LHType:            "Wetlease",
+		},
+		{
+			Cluster:           "SOC 4,SOC 6",
+			DockLabel:         "Dock 59",
+			PlateNumber:       "NAN 3523",
+			FleetSizeProvided: "10WH",
+			LHType:            "Wetlease",
+		},
+	}
+
+	provideTS, ok := parseProvideTime("2/25/2026 12:25:08")
+	if !ok {
+		t.Fatalf("expected provide time to parse")
+	}
+
+	got := buildMergedMessage(rows, formatProvideTimeMinute(provideTS.Truncate(time.Minute)))
+	want := "<mention-tag target=\"seatalk://user?id=0\"/> For Docking\n\n" +
+		"      **SOC 11,SOC 8 - Dock 68**\n" +
+		"      **Plate_#: CBN 6469**\n" +
+		"      6WH-Wetlease\n\n" +
+		"      **Gumaca Hub,San Narciso Hub,San Andres Hub - Dock 75**\n" +
+		"      **Plate_#: CCK 4754**\n" +
+		"      6WH-Wetlease\n\n" +
+		"      **SOC 4,SOC 6 - Dock 59**\n" +
+		"      **Plate_#: NAN 3523**\n" +
+		"      10WH-Wetlease\n\n" +
+		"Provided Time: 2/25/2026 12:25 PM"
+	if got != want {
+		t.Fatalf("unexpected merged message:\nwant: %q\n got: %q", want, got)
+	}
+}
+
+func TestIsDoubleRequestText(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"DOUBLE REQUEST", true},
+		{"Double", true},
+		{"double request", true},
+		{"  double   request  ", true},
+		{"PLEASE DOUBLE", true},
+		{"NIE 1506", false},
+	}
+
+	for _, tc := range cases {
+		got := isDoubleRequestText(tc.in)
+		if got != tc.want {
+			t.Fatalf("isDoubleRequestText(%q)=%v want=%v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestBuildDoubleRequestMessage(t *testing.T) {
+	row := sheetRow{
+		Cluster:   "Lemery Hub,Taal Hub",
+		DockLabel: "Dock 40",
+	}
+
+	got := buildDoubleRequestMessage(row)
+	want := "Double Request!\nLemery Hub,Taal Hub - Dock 40"
+	if got != want {
+		t.Fatalf("unexpected double request message:\nwant: %q\n got: %q", want, got)
+	}
+}

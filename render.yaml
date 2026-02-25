@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: go-bot-workflow-mm-lh-provided
+    runtime: go
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /healthz
+    buildCommand: go build -o bin/workflow-mm-lh-provided ./cmd/workflow-mm-lh-provided
+    startCommand: ./bin/workflow-mm-lh-provided
+    envVars:
+      - key: WF1_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: WF1_CONTINUOUS
+        value: "true"
+      - key: WF1_POLL_INTERVAL_SECONDS
+        value: "3"
+      - key: WF1_FORCE_SEND_AFTER_SECONDS
+        value: "300"
+      - key: WF1_GROUP_DEFER_SECONDS
+        value: "20"
+      - key: WF1_BOOTSTRAP_SEND_EXISTING
+        value: "false"
+      - key: WF1_AT_ALL
+        value: "false"
+      - key: WF1_DEBUG_LOG_SKIPS
+        value: "false"
+      - key: WF1_HTTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: WF1_ENABLE_HEALTH_SERVER
+        value: "true"
+      - key: WF1_HEALTH_PORT
+        value: ""
+      - key: WF1_SELF_PING_INTERVAL_SECONDS
+        value: "300"
+      - key: WF1_DRY_RUN
+        value: "false"
+      - key: WF1_STATE_FILE
+        value: data/workflow1-mm-lh-provided-state.json
+      - key: WF1_STATUS_FILE
+        value: data/workflow1-mm-lh-provided-status.json
+      - key: WF1_SHEET_ID
+        value: 1mhzIfYfF1VSA9sPiqnLw7OgY1S_gI0wEzkXBQ1CCuDg
+      - key: WF1_SHEET_TAB
+        value: MM LH Provided
+      - key: WF1_SHEET_RANGE
+        value: A2:M
+      - key: SEATALK_SYSTEM_WEBHOOK_URL
+        sync: false
+      - key: WF1_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF1_SELF_PING_URL
+        sync: false
