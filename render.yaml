@@ -75,7 +75,11 @@ services:
       - key: WF2_SHEET_TAB
         value: Backlogs Summary
       - key: WF2_CAPTURE_RANGE
-        value: C2:S64
+        value: C2:R64
+      - key: WF2_SECOND_CAPTURE_TAB
+        value: SOLIIS & MINDANAO
+      - key: WF2_SECOND_CAPTURE_RANGE
+        value: B1:K41
       - key: WF2_TRIGGER_CELL
         value: G4
       - key: WF2_CONTINUOUS
@@ -95,6 +99,10 @@ services:
       - key: WF2_IMAGE_MAX_BASE64_BYTES
         value: "5242880"
       - key: WF2_RENDER_SCALE
+        value: "2"
+      - key: WF2_STABILITY_RUNS
+        value: "3"
+      - key: WF2_STABILITY_WAIT_SECONDS
         value: "2"
       - key: WF2_ENABLE_HEALTH_SERVER
         value: "true"
