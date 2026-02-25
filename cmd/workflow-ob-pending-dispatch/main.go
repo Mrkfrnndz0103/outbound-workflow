@@ -25,18 +25,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-fonts/liberation/liberationmonobold"
+	"github.com/go-fonts/liberation/liberationmonobolditalic"
+	"github.com/go-fonts/liberation/liberationmonoitalic"
+	"github.com/go-fonts/liberation/liberationmonoregular"
+	"github.com/go-fonts/liberation/liberationsansbold"
+	"github.com/go-fonts/liberation/liberationsansbolditalic"
+	"github.com/go-fonts/liberation/liberationsansitalic"
+	"github.com/go-fonts/liberation/liberationsansregular"
+	"github.com/go-fonts/liberation/liberationserifbold"
+	"github.com/go-fonts/liberation/liberationserifbolditalic"
+	"github.com/go-fonts/liberation/liberationserifitalic"
+	"github.com/go-fonts/liberation/liberationserifregular"
 	"github.com/joho/godotenv"
 	"github.com/spxph4227/go-bot-server/internal/seatalk"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/gobolditalic"
-	"golang.org/x/image/font/gofont/goitalic"
-	"golang.org/x/image/font/gofont/gomono"
-	"golang.org/x/image/font/gofont/gomonobold"
-	"golang.org/x/image/font/gofont/gomonobolditalic"
-	"golang.org/x/image/font/gofont/gomonoitalic"
-	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	"google.golang.org/api/option"
@@ -174,6 +178,10 @@ var (
 	boldSans     *opentype.Font
 	italicSans   *opentype.Font
 	boldItSans   *opentype.Font
+	regularSerif *opentype.Font
+	boldSerif    *opentype.Font
+	italicSerif  *opentype.Font
+	boldItSerif  *opentype.Font
 	regularMono  *opentype.Font
 	boldMono     *opentype.Font
 	italicMono   *opentype.Font
@@ -1118,36 +1126,53 @@ func toByte(v float64) uint8 {
 
 func loadFace(fontFamily string, isBold bool, isItalic bool, size float64) font.Face {
 	fontInitOnce.Do(func() {
-		regularSans, fontInitErr = opentype.Parse(goregular.TTF)
+		regularSans, fontInitErr = opentype.Parse(liberationsansregular.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		boldSans, fontInitErr = opentype.Parse(gobold.TTF)
+		boldSans, fontInitErr = opentype.Parse(liberationsansbold.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		italicSans, fontInitErr = opentype.Parse(goitalic.TTF)
+		italicSans, fontInitErr = opentype.Parse(liberationsansitalic.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		boldItSans, fontInitErr = opentype.Parse(gobolditalic.TTF)
+		boldItSans, fontInitErr = opentype.Parse(liberationsansbolditalic.TTF)
 		if fontInitErr != nil {
 			return
 		}
 
-		regularMono, fontInitErr = opentype.Parse(gomono.TTF)
+		regularSerif, fontInitErr = opentype.Parse(liberationserifregular.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		boldMono, fontInitErr = opentype.Parse(gomonobold.TTF)
+		boldSerif, fontInitErr = opentype.Parse(liberationserifbold.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		italicMono, fontInitErr = opentype.Parse(gomonoitalic.TTF)
+		italicSerif, fontInitErr = opentype.Parse(liberationserifitalic.TTF)
 		if fontInitErr != nil {
 			return
 		}
-		boldItMono, fontInitErr = opentype.Parse(gomonobolditalic.TTF)
+		boldItSerif, fontInitErr = opentype.Parse(liberationserifbolditalic.TTF)
+		if fontInitErr != nil {
+			return
+		}
+
+		regularMono, fontInitErr = opentype.Parse(liberationmonoregular.TTF)
+		if fontInitErr != nil {
+			return
+		}
+		boldMono, fontInitErr = opentype.Parse(liberationmonobold.TTF)
+		if fontInitErr != nil {
+			return
+		}
+		italicMono, fontInitErr = opentype.Parse(liberationmonoitalic.TTF)
+		if fontInitErr != nil {
+			return
+		}
+		boldItMono, fontInitErr = opentype.Parse(liberationmonobolditalic.TTF)
 	})
 	if fontInitErr != nil {
 		return basicfont.Face7x13
@@ -1179,6 +1204,17 @@ func loadFace(fontFamily string, isBold bool, isItalic bool, size float64) font.
 		default:
 			selected = regularMono
 		}
+	} else if family == "serif" {
+		switch {
+		case isBold && isItalic:
+			selected = boldItSerif
+		case isBold:
+			selected = boldSerif
+		case isItalic:
+			selected = italicSerif
+		default:
+			selected = regularSerif
+		}
 	} else {
 		switch {
 		case isBold && isItalic:
@@ -1193,8 +1229,8 @@ func loadFace(fontFamily string, isBold bool, isItalic bool, size float64) font.
 	}
 	face, err := opentype.NewFace(selected, &opentype.FaceOptions{
 		Size:    size,
-		DPI:     72,
-		Hinting: font.HintingNone,
+		DPI:     96,
+		Hinting: font.HintingFull,
 	})
 	if err != nil {
 		return basicfont.Face7x13
@@ -1210,6 +1246,12 @@ func normalizeFontFamily(raw string) string {
 		strings.Contains(normalized, "courier"),
 		strings.Contains(normalized, "consolas"):
 		return "mono"
+	case strings.Contains(normalized, "serif"),
+		strings.Contains(normalized, "times"),
+		strings.Contains(normalized, "cambria"),
+		strings.Contains(normalized, "georgia"),
+		strings.Contains(normalized, "garamond"):
+		return "serif"
 	default:
 		return "sans"
 	}
