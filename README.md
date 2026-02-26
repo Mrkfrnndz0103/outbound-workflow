@@ -254,7 +254,7 @@ Optional env:
 - `WF2_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF2_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF2_RENDER_SCALE` (default `2`, range `1-4`)
-- `WF2_SECOND_RENDER_SCALE` (default `1`, range `1-4`)
+- `WF2_SECOND_RENDER_SCALE` (default `2`, range `1-4`)
 - `WF2_SECOND_CAPTURE_TAB` (default `SOLIIS & MINDANAO`)
 - `WF2_SECOND_CAPTURE_RANGE` (default `B1:K41`)
 - `WF2_STABILITY_RUNS` (default `3`, min `2`)

@@ -101,7 +101,7 @@ services:
       - key: WF2_RENDER_SCALE
         value: "2"
       - key: WF2_SECOND_RENDER_SCALE
-        value: "1"
+        value: "2"
       - key: WF2_STABILITY_RUNS
         value: "3"
       - key: WF2_STABILITY_WAIT_SECONDS

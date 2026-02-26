@@ -68,7 +68,7 @@ const (
 	defaultMaxImageB64   = 5 * 1024 * 1024
 	defaultTimezone      = "Asia/Manila"
 	defaultRenderScale   = 2
-	defaultSecondScale   = 1
+	defaultSecondScale   = 2
 	defaultStabilityWait = 2 * time.Second
 	defaultStabilityRuns = 3
 )
