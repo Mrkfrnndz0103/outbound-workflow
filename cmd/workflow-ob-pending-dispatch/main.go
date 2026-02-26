@@ -68,6 +68,7 @@ const (
 	defaultMaxImageB64   = 5 * 1024 * 1024
 	defaultTimezone      = "Asia/Manila"
 	defaultRenderScale   = 2
+	defaultSecondScale   = 1
 	defaultStabilityWait = 2 * time.Second
 	defaultStabilityRuns = 3
 )
@@ -93,12 +94,13 @@ type workflowConfig struct {
 	PollInterval          time.Duration
 	HTTPTimeout           time.Duration
 
-	TimeZone        string
-	MaxImageWidthPx int
-	MaxImageB64Size int
-	RenderScale     int
-	StabilityWait   time.Duration
-	StabilityRuns   int
+	TimeZone          string
+	MaxImageWidthPx   int
+	MaxImageB64Size   int
+	RenderScale       int
+	SecondRenderScale int
+	StabilityWait     time.Duration
+	StabilityRuns     int
 
 	StateFile  string
 	StatusFile string
@@ -183,8 +185,9 @@ type mergeRegion struct {
 }
 
 type captureTarget struct {
-	Tab   string
-	Range string
+	Tab         string
+	Range       string
+	RenderScale int
 }
 
 var (
@@ -347,7 +350,7 @@ func runCycle(
 				if readErr != nil {
 					return readErr
 				}
-				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, cfg.RenderScale)
+				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, target.RenderScale)
 				if renderErr != nil {
 					return renderErr
 				}
@@ -358,7 +361,7 @@ func runCycle(
 				lastImageFmt = imageFmt
 				lastImageSize += imageBytes
 				lastImageCount++
-				logger.Printf("dry_run=true changed=true trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, imageFmt, imageBytes)
+				logger.Printf("dry_run=true changed=true trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, target.RenderScale, imageFmt, imageBytes)
 			}
 		} else {
 			if sendErr := seaTalkClient.SendTextToGroup(ctx, cfg.SeaTalkGroupID, announce, 1); sendErr != nil {
@@ -369,7 +372,7 @@ func runCycle(
 				if readErr != nil {
 					return readErr
 				}
-				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, cfg.RenderScale)
+				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, target.RenderScale)
 				if renderErr != nil {
 					return renderErr
 				}
@@ -383,7 +386,7 @@ func runCycle(
 				lastImageFmt = imageFmt
 				lastImageSize += imageBytes
 				lastImageCount++
-				logger.Printf("sent image trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, imageFmt, imageBytes)
+				logger.Printf("sent image trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, target.RenderScale, imageFmt, imageBytes)
 			}
 			state.LastSentAt = now.Format(time.RFC3339)
 			logger.Printf("sent changed=true trigger_cell=%s old=%q new=%q image_count=%d image_bytes_total=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, lastImageCount, lastImageSize)
@@ -504,6 +507,7 @@ func loadConfig() (workflowConfig, error) {
 		MaxImageWidthPx:       getIntEnv("WF2_IMAGE_MAX_WIDTH_PX", defaultMaxImageWidth),
 		MaxImageB64Size:       getIntEnv("WF2_IMAGE_MAX_BASE64_BYTES", defaultMaxImageB64),
 		RenderScale:           getIntEnv("WF2_RENDER_SCALE", defaultRenderScale),
+		SecondRenderScale:     getIntEnv("WF2_SECOND_RENDER_SCALE", defaultSecondScale),
 		StabilityWait:         getDurationSeconds("WF2_STABILITY_WAIT_SECONDS", int(defaultStabilityWait/time.Second)),
 		StabilityRuns:         getIntEnv("WF2_STABILITY_RUNS", defaultStabilityRuns),
 		StateFile:             firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_STATE_FILE")), defaultStateFile),
@@ -523,6 +527,12 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.RenderScale > 4 {
 		cfg.RenderScale = 4
+	}
+	if cfg.SecondRenderScale < 1 {
+		cfg.SecondRenderScale = 1
+	}
+	if cfg.SecondRenderScale > 4 {
+		cfg.SecondRenderScale = 4
 	}
 	if cfg.StabilityWait < time.Second {
 		cfg.StabilityWait = time.Second
@@ -563,12 +573,16 @@ func readSingleCell(ctx context.Context, svc *sheets.Service, sheetID, tab, cell
 
 func buildCaptureTargets(cfg workflowConfig) []captureTarget {
 	targets := []captureTarget{
-		{Tab: cfg.SheetTab, Range: cfg.CaptureRange},
+		{Tab: cfg.SheetTab, Range: cfg.CaptureRange, RenderScale: cfg.RenderScale},
 	}
 	secondTab := strings.TrimSpace(cfg.SecondCaptureTab)
 	secondRange := strings.TrimSpace(cfg.SecondCaptureRange)
 	if secondTab != "" && secondRange != "" {
-		targets = append(targets, captureTarget{Tab: secondTab, Range: secondRange})
+		secondScale := cfg.SecondRenderScale
+		if secondScale < 1 {
+			secondScale = cfg.RenderScale
+		}
+		targets = append(targets, captureTarget{Tab: secondTab, Range: secondRange, RenderScale: secondScale})
 	}
 	return targets
 }
