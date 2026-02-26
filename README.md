@@ -226,9 +226,7 @@ Send behavior:
 - Sends text first:
   - `<mention-tag target="seatalk://user?id=0"/> OB Pending for Dispatch as of {local_time}`
   - Local time format: `3:04 PM Jan-02` in `WF2_TIMEZONE` (default `Asia/Manila`)
-- Renders and sends two styled images by default:
-  - `Backlogs Summary!C2:S64`
-  - `SOLIIS & MINDANAO!B1:K41`
+- Renders and sends one styled image by default: `Backlogs Summary!C2:S64`
 - Waits for trigger + captured values to stabilize before sending (`WF2_STABILITY_RUNS` checks, `WF2_STABILITY_WAIT_SECONDS` between checks).
 - Enforces SeaTalk image limit (`<= 5MB` Base64): PNG first, JPEG fallback if needed.
 
@@ -254,9 +252,6 @@ Optional env:
 - `WF2_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF2_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF2_RENDER_SCALE` (default `2`, range `1-4`)
-- `WF2_SECOND_RENDER_SCALE` (default `2`, range `1-4`)
-- `WF2_SECOND_CAPTURE_TAB` (default `SOLIIS & MINDANAO`)
-- `WF2_SECOND_CAPTURE_RANGE` (default `B1:K41`)
 - `WF2_STABILITY_RUNS` (default `3`, min `2`)
 - `WF2_STABILITY_WAIT_SECONDS` (default `2`, min `1`)
 - `WF2_ENABLE_HEALTH_SERVER` (default `true`)

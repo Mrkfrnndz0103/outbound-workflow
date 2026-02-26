@@ -55,8 +55,6 @@ const (
 	defaultSheetID      = "17cvCc6ffMXNs6JYnpMYvDO_V8nBCRKRm3G78oINj_yo"
 	defaultSheetTab     = "Backlogs Summary"
 	defaultCaptureRange = "C2:S64"
-	defaultSecondTab    = "SOLIIS & MINDANAO"
-	defaultSecondRange  = "B1:K41"
 	defaultTriggerCell  = "G4"
 
 	defaultStateFile  = "data/workflow2-ob-pending-dispatch-state.json"
@@ -68,7 +66,6 @@ const (
 	defaultMaxImageB64   = 5 * 1024 * 1024
 	defaultTimezone      = "Asia/Manila"
 	defaultRenderScale   = 2
-	defaultSecondScale   = 2
 	defaultStabilityWait = 2 * time.Second
 	defaultStabilityRuns = 3
 )
@@ -77,8 +74,6 @@ type workflowConfig struct {
 	SheetID               string
 	SheetTab              string
 	CaptureRange          string
-	SecondCaptureTab      string
-	SecondCaptureRange    string
 	TriggerCell           string
 	GoogleCredentialsFile string
 	GoogleCredentialsJSON string
@@ -94,13 +89,12 @@ type workflowConfig struct {
 	PollInterval          time.Duration
 	HTTPTimeout           time.Duration
 
-	TimeZone          string
-	MaxImageWidthPx   int
-	MaxImageB64Size   int
-	RenderScale       int
-	SecondRenderScale int
-	StabilityWait     time.Duration
-	StabilityRuns     int
+	TimeZone        string
+	MaxImageWidthPx int
+	MaxImageB64Size int
+	RenderScale     int
+	StabilityWait   time.Duration
+	StabilityRuns   int
 
 	StateFile  string
 	StatusFile string
@@ -128,7 +122,6 @@ type workflowStatus struct {
 	LastSentAt      string `json:"last_sent_at,omitempty"`
 	LastImageFormat string `json:"last_image_format,omitempty"`
 	LastImageBytes  int    `json:"last_image_bytes,omitempty"`
-	LastImageCount  int    `json:"last_image_count,omitempty"`
 	StateFile       string `json:"state_file"`
 	StatusFile      string `json:"status_file,omitempty"`
 }
@@ -182,12 +175,6 @@ type mergeRegion struct {
 	EndRow   int
 	StartCol int
 	EndCol   int
-}
-
-type captureTarget struct {
-	Tab         string
-	Range       string
-	RenderScale int
 }
 
 var (
@@ -306,30 +293,27 @@ func runCycle(
 
 	lastImageFmt := ""
 	lastImageSize := 0
-	lastImageCount := 0
 
 	if changed {
-		targets := buildCaptureTargets(cfg)
-		stable, stableTrigger, stableErr := waitForStableSnapshots(ctx, cfg, svc, triggerValue, targets)
+		stable, stableTrigger, stableErr := waitForStableSnapshots(ctx, cfg, svc, triggerValue)
 		if stableErr != nil {
 			return stableErr
 		}
 		if !stable {
 			logger.Printf("change pending stabilization trigger_cell=%s old=%q new=%q stable_now=%q", cfg.TriggerCell, state.LastTriggerValue, triggerValue, stableTrigger)
 			status := workflowStatus{
-				Workflow:       workflowName,
-				Continuous:     cfg.Continuous,
-				DryRun:         cfg.DryRun,
-				Cycle:          cycle,
-				LastCycleAt:    now.Format(time.RFC3339),
-				Changed:        true,
-				TriggerCell:    cfg.TriggerCell,
-				TriggerValue:   triggerValue,
-				LastTrigger:    state.LastTriggerValue,
-				LastSentAt:     state.LastSentAt,
-				StateFile:      cfg.StateFile,
-				StatusFile:     cfg.StatusFile,
-				LastImageCount: 0,
+				Workflow:     workflowName,
+				Continuous:   cfg.Continuous,
+				DryRun:       cfg.DryRun,
+				Cycle:        cycle,
+				LastCycleAt:  now.Format(time.RFC3339),
+				Changed:      true,
+				TriggerCell:  cfg.TriggerCell,
+				TriggerValue: triggerValue,
+				LastTrigger:  state.LastTriggerValue,
+				LastSentAt:   state.LastSentAt,
+				StateFile:    cfg.StateFile,
+				StatusFile:   cfg.StatusFile,
 			}
 			if cfg.StatusFile != "" {
 				if statusErr := saveStatus(cfg.StatusFile, status); statusErr != nil {
@@ -344,52 +328,32 @@ func runCycle(
 			time.Now().In(loc).Format("3:04 PM Jan-02"),
 		)
 
+		styledRange, readErr := readStyledRange(ctx, svc, cfg.SheetID, cfg.SheetTab, cfg.CaptureRange)
+		if readErr != nil {
+			return readErr
+		}
+		pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, cfg.RenderScale)
+		if renderErr != nil {
+			return renderErr
+		}
+		base64Image, imageFmt, imageBytes, encodeErr := encodeImageWithinLimit(pngRaw, cfg.MaxImageB64Size)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		lastImageFmt = imageFmt
+		lastImageSize = imageBytes
+
 		if cfg.DryRun {
-			for idx, target := range targets {
-				styledRange, readErr := readStyledRange(ctx, svc, cfg.SheetID, target.Tab, target.Range)
-				if readErr != nil {
-					return readErr
-				}
-				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, target.RenderScale)
-				if renderErr != nil {
-					return renderErr
-				}
-				_, imageFmt, imageBytes, encodeErr := encodeImageWithinLimit(pngRaw, cfg.MaxImageB64Size)
-				if encodeErr != nil {
-					return encodeErr
-				}
-				lastImageFmt = imageFmt
-				lastImageSize += imageBytes
-				lastImageCount++
-				logger.Printf("dry_run=true changed=true trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, target.RenderScale, imageFmt, imageBytes)
-			}
+			logger.Printf("dry_run=true changed=true trigger_cell=%s old=%q new=%q range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, cfg.SheetTab, cfg.CaptureRange, cfg.RenderScale, imageFmt, imageBytes)
 		} else {
 			if sendErr := seaTalkClient.SendTextToGroup(ctx, cfg.SeaTalkGroupID, announce, 1); sendErr != nil {
 				return fmt.Errorf("send text: %w", sendErr)
 			}
-			for idx, target := range targets {
-				styledRange, readErr := readStyledRange(ctx, svc, cfg.SheetID, target.Tab, target.Range)
-				if readErr != nil {
-					return readErr
-				}
-				pngRaw, renderErr := renderStyledRangeImage(styledRange, cfg.MaxImageWidthPx, target.RenderScale)
-				if renderErr != nil {
-					return renderErr
-				}
-				base64Image, imageFmt, imageBytes, encodeErr := encodeImageWithinLimit(pngRaw, cfg.MaxImageB64Size)
-				if encodeErr != nil {
-					return encodeErr
-				}
-				if sendErr := seaTalkClient.SendImageToGroupBase64(ctx, cfg.SeaTalkGroupID, base64Image); sendErr != nil {
-					return fmt.Errorf("send image (%s!%s): %w", target.Tab, target.Range, sendErr)
-				}
-				lastImageFmt = imageFmt
-				lastImageSize += imageBytes
-				lastImageCount++
-				logger.Printf("sent image trigger_cell=%s old=%q new=%q capture=%d/%d range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, idx+1, len(targets), target.Tab, target.Range, target.RenderScale, imageFmt, imageBytes)
+			if sendErr := seaTalkClient.SendImageToGroupBase64(ctx, cfg.SeaTalkGroupID, base64Image); sendErr != nil {
+				return fmt.Errorf("send image (%s!%s): %w", cfg.SheetTab, cfg.CaptureRange, sendErr)
 			}
 			state.LastSentAt = now.Format(time.RFC3339)
-			logger.Printf("sent changed=true trigger_cell=%s old=%q new=%q image_count=%d image_bytes_total=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, lastImageCount, lastImageSize)
+			logger.Printf("sent changed=true trigger_cell=%s old=%q new=%q image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, imageFmt, imageBytes)
 		}
 	}
 
@@ -413,7 +377,6 @@ func runCycle(
 		LastSentAt:      state.LastSentAt,
 		LastImageFormat: lastImageFmt,
 		LastImageBytes:  lastImageSize,
-		LastImageCount:  lastImageCount,
 		StateFile:       cfg.StateFile,
 		StatusFile:      cfg.StatusFile,
 	}
@@ -489,8 +452,6 @@ func loadConfig() (workflowConfig, error) {
 		SheetID:               firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_SHEET_ID")), defaultSheetID),
 		SheetTab:              firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_SHEET_TAB")), defaultSheetTab),
 		CaptureRange:          firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_CAPTURE_RANGE")), defaultCaptureRange),
-		SecondCaptureTab:      firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_SECOND_CAPTURE_TAB")), defaultSecondTab),
-		SecondCaptureRange:    firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_SECOND_CAPTURE_RANGE")), defaultSecondRange),
 		TriggerCell:           firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_TRIGGER_CELL")), defaultTriggerCell),
 		GoogleCredentialsFile: credsFile,
 		GoogleCredentialsJSON: credsJSON,
@@ -507,7 +468,6 @@ func loadConfig() (workflowConfig, error) {
 		MaxImageWidthPx:       getIntEnv("WF2_IMAGE_MAX_WIDTH_PX", defaultMaxImageWidth),
 		MaxImageB64Size:       getIntEnv("WF2_IMAGE_MAX_BASE64_BYTES", defaultMaxImageB64),
 		RenderScale:           getIntEnv("WF2_RENDER_SCALE", defaultRenderScale),
-		SecondRenderScale:     getIntEnv("WF2_SECOND_RENDER_SCALE", defaultSecondScale),
 		StabilityWait:         getDurationSeconds("WF2_STABILITY_WAIT_SECONDS", int(defaultStabilityWait/time.Second)),
 		StabilityRuns:         getIntEnv("WF2_STABILITY_RUNS", defaultStabilityRuns),
 		StateFile:             firstNonEmpty(strings.TrimSpace(os.Getenv("WF2_STATE_FILE")), defaultStateFile),
@@ -527,12 +487,6 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.RenderScale > 4 {
 		cfg.RenderScale = 4
-	}
-	if cfg.SecondRenderScale < 1 {
-		cfg.SecondRenderScale = 1
-	}
-	if cfg.SecondRenderScale > 4 {
-		cfg.SecondRenderScale = 4
 	}
 	if cfg.StabilityWait < time.Second {
 		cfg.StabilityWait = time.Second
@@ -571,28 +525,11 @@ func readSingleCell(ctx context.Context, svc *sheets.Service, sheetID, tab, cell
 	return strings.TrimSpace(fmt.Sprint(resp.Values[0][0])), nil
 }
 
-func buildCaptureTargets(cfg workflowConfig) []captureTarget {
-	targets := []captureTarget{
-		{Tab: cfg.SheetTab, Range: cfg.CaptureRange, RenderScale: cfg.RenderScale},
-	}
-	secondTab := strings.TrimSpace(cfg.SecondCaptureTab)
-	secondRange := strings.TrimSpace(cfg.SecondCaptureRange)
-	if secondTab != "" && secondRange != "" {
-		secondScale := cfg.SecondRenderScale
-		if secondScale < 1 {
-			secondScale = cfg.RenderScale
-		}
-		targets = append(targets, captureTarget{Tab: secondTab, Range: secondRange, RenderScale: secondScale})
-	}
-	return targets
-}
-
 func waitForStableSnapshots(
 	ctx context.Context,
 	cfg workflowConfig,
 	svc *sheets.Service,
 	expectedTrigger string,
-	targets []captureTarget,
 ) (stable bool, latestTrigger string, err error) {
 	var previousDigest string
 	latestTrigger = expectedTrigger
@@ -608,7 +545,7 @@ func waitForStableSnapshots(
 			return false, latestTrigger, nil
 		}
 
-		digest, digestErr := captureValuesDigest(ctx, svc, cfg.SheetID, targets)
+		digest, digestErr := captureValuesDigest(ctx, svc, cfg.SheetID, cfg.SheetTab, cfg.CaptureRange)
 		if digestErr != nil {
 			return false, latestTrigger, digestErr
 		}
@@ -629,14 +566,10 @@ func waitForStableSnapshots(
 	return false, latestTrigger, nil
 }
 
-func captureValuesDigest(ctx context.Context, svc *sheets.Service, sheetID string, targets []captureTarget) (string, error) {
-	ranges := make([]string, 0, len(targets))
-	for _, target := range targets {
-		ranges = append(ranges, fmt.Sprintf("%s!%s", target.Tab, target.Range))
-	}
-
+func captureValuesDigest(ctx context.Context, svc *sheets.Service, sheetID, tab, captureRange string) (string, error) {
+	rangeRef := fmt.Sprintf("%s!%s", tab, captureRange)
 	resp, err := svc.Spreadsheets.Values.BatchGet(sheetID).
-		Ranges(ranges...).
+		Ranges(rangeRef).
 		ValueRenderOption("FORMATTED_VALUE").
 		Context(ctx).
 		Do()
