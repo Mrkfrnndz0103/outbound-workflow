@@ -181,6 +181,16 @@ func main() {
 		startHealthServer(sigCtx, cfg, logger)
 	}
 
+	outputEndCol := columnNameFromIndex(len(selectedOutputHeaders))
+	logger.Printf(
+		"destination write target sheet=%s tab=%s range=A:%s columns=%d headers=%q",
+		cfg.DestinationSheetID,
+		cfg.DestinationTab,
+		outputEndCol,
+		len(selectedOutputHeaders),
+		strings.Join(selectedOutputHeaders, ", "),
+	)
+
 	cycle := 1
 	logger.Printf("watch mode enabled poll_interval=%s", cfg.PollInterval)
 	for {
@@ -771,12 +781,13 @@ func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 		Values: [][]interface{}{values},
 	}
 	endCol := columnNameFromIndex(len(headers))
-	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, fmt.Sprintf("%s!A1:%s1", tab, endCol), vr).
+	targetRange := fmt.Sprintf("%s!A1:%s1", tab, endCol)
+	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
 		ValueInputOption("RAW").
 		Context(ctx).
 		Do()
 	if err != nil {
-		return fmt.Errorf("write header row: %w", err)
+		return fmt.Errorf("write header row range=%s headers=%d: %w", targetRange, len(headers), err)
 	}
 	return nil
 }
