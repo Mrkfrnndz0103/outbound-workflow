@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -82,6 +83,9 @@ type workflowConfig struct {
 
 	StateFile  string
 	StatusFile string
+
+	EnableHealthServer bool
+	HealthListenAddr   string
 }
 
 type workflowState struct {
@@ -164,6 +168,10 @@ func main() {
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.EnableHealthServer {
+		startHealthServer(sigCtx, cfg, logger)
+	}
 
 	cycle := 1
 	logger.Printf("watch mode enabled poll_interval=%s", cfg.PollInterval)
@@ -512,6 +520,10 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	enableHealthServer, err := getBoolEnv("WF21_ENABLE_HEALTH_SERVER", true)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 
 	credsFile := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_GOOGLE_CREDENTIALS_FILE")),
@@ -537,6 +549,11 @@ func loadConfig() (workflowConfig, error) {
 	case "":
 		statusFile = defaultStatusFile
 	}
+	healthPort := firstNonEmpty(
+		strings.TrimSpace(os.Getenv("WF21_HEALTH_PORT")),
+		strings.TrimSpace(os.Getenv("PORT")),
+		"8080",
+	)
 
 	cfg := workflowConfig{
 		GoogleCredentialsFile:    credsFile,
@@ -558,6 +575,8 @@ func loadConfig() (workflowConfig, error) {
 		TempDir:                  strings.TrimSpace(os.Getenv("WF21_TEMP_DIR")),
 		StateFile:                firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_STATE_FILE")), defaultStateFile),
 		StatusFile:               statusFile,
+		EnableHealthServer:       enableHealthServer,
+		HealthListenAddr:         normalizeListenAddr(healthPort),
 	}
 
 	if cfg.PollInterval < 5*time.Second {
@@ -928,6 +947,61 @@ func writeStatusIfConfigured(path string, status workflowStatus, logger *log.Log
 	if err := saveStatus(path, status); err != nil {
 		logger.Printf("status write failed path=%s err=%v", path, err)
 	}
+}
+
+func startHealthServer(ctx context.Context, cfg workflowConfig, logger *log.Logger) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
+		if strings.TrimSpace(cfg.StatusFile) == "" {
+			http.Error(w, "status output disabled", http.StatusNotFound)
+			return
+		}
+		raw, err := os.ReadFile(cfg.StatusFile)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("status unavailable: %v", err), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+	})
+
+	server := &http.Server{
+		Addr:              cfg.HealthListenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		logger.Printf("health server listening on %s", cfg.HealthListenAddr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Printf("health server stopped unexpectedly: %v", err)
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			logger.Printf("health server shutdown error: %v", err)
+		}
+	}()
+}
+
+func normalizeListenAddr(raw string) string {
+	val := strings.TrimSpace(raw)
+	if val == "" {
+		return ":8080"
+	}
+	if strings.Contains(val, ":") {
+		return val
+	}
+	return ":" + val
 }
 
 func writeJSONFile(path string, payload []byte) error {

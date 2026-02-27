@@ -59,11 +59,12 @@ services:
       - key: WF1_SELF_PING_URL
         sync: false
 
-  - type: worker
+  - type: web
     name: go-bot-workflow-drive-csv-consolidation
     runtime: go
     plan: free
     autoDeploy: true
+    healthCheckPath: /healthz
     buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
     startCommand: ./bin/workflow-drive-csv-consolidation
     envVars:
@@ -89,6 +90,10 @@ services:
         value: "false"
       - key: WF21_CONTINUOUS
         value: "true"
+      - key: WF21_ENABLE_HEALTH_SERVER
+        value: "true"
+      - key: WF21_HEALTH_PORT
+        value: ""
       - key: WF21_POLL_INTERVAL_SECONDS
         value: "30"
       - key: WF21_SHEETS_BATCH_SIZE
