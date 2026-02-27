@@ -13,6 +13,7 @@ import (
 )
 
 type Definition struct {
+	Enabled         *bool             `yaml:"enabled"`
 	Command         string            `yaml:"command"`
 	Args            []string          `yaml:"args"`
 	AllowExtraArgs  bool              `yaml:"allow_extra_args"`
@@ -54,15 +55,20 @@ func LoadDefinitions(path string) (map[string]Definition, error) {
 	if len(parsed.Workflows) == 0 {
 		return nil, errors.New("no workflows configured")
 	}
+	enabledWorkflows := make(map[string]Definition, len(parsed.Workflows))
 	for name, workflow := range parsed.Workflows {
 		if strings.TrimSpace(name) == "" {
 			return nil, errors.New("workflow name cannot be empty")
 		}
+		if !workflow.IsEnabled() {
+			continue
+		}
 		if strings.TrimSpace(workflow.Command) == "" {
 			return nil, fmt.Errorf("workflow %q command cannot be empty", name)
 		}
+		enabledWorkflows[name] = workflow
 	}
-	return parsed.Workflows, nil
+	return enabledWorkflows, nil
 }
 
 func NewRunner(workflows map[string]Definition, defaultTimeout time.Duration) *CommandRunner {
@@ -140,4 +146,11 @@ func toEnv(source map[string]string) []string {
 		env = append(env, key+"="+value)
 	}
 	return env
+}
+
+func (d Definition) IsEnabled() bool {
+	if d.Enabled == nil {
+		return true
+	}
+	return *d.Enabled
 }

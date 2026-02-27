@@ -7,6 +7,17 @@ workflows:
     timeout_seconds: 120
     allow_extra_args: false
 
+  workflow_2_1_drive_csv_consolidation:
+    enabled: true
+    command: go
+    args:
+      - run
+      - ./cmd/workflow-drive-csv-consolidation
+    timeout_seconds: 900
+    allow_extra_args: false
+    env:
+      WF21_CONTINUOUS: "false"
+
   ping:
     command: cmd
     args:

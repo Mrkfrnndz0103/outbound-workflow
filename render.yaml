@@ -59,3 +59,50 @@ services:
       - key: WF1_SELF_PING_URL
         sync: false
 
+  - type: worker
+    name: go-bot-workflow-drive-csv-consolidation
+    runtime: go
+    plan: free
+    autoDeploy: true
+    buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
+    startCommand: ./bin/workflow-drive-csv-consolidation
+    envVars:
+      - key: WF21_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: WF21_DRIVE_PARENT_FOLDER_ID
+        value: 1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ
+      - key: WF21_DESTINATION_SHEET_ID
+        value: 1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA
+      - key: WF21_DESTINATION_TAB
+        value: generated_file
+      - key: WF21_R2_OBJECT_PREFIX
+        value: wf2-1
+      - key: WF21_STATE_FILE
+        value: data/workflow2-1-drive-csv-consolidation-state.json
+      - key: WF21_STATUS_FILE
+        value: data/workflow2-1-drive-csv-consolidation-status.json
+      - key: WF21_BOOTSTRAP_PROCESS_EXISTING
+        value: "true"
+      - key: WF21_DROP_LEADING_UNNAMED_COLUMN
+        value: "true"
+      - key: WF21_DRY_RUN
+        value: "false"
+      - key: WF21_CONTINUOUS
+        value: "true"
+      - key: WF21_POLL_INTERVAL_SECONDS
+        value: "30"
+      - key: WF21_SHEETS_BATCH_SIZE
+        value: "1000"
+      - key: WF21_TEMP_DIR
+        value: ""
+      - key: WF21_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF21_R2_ACCOUNT_ID
+        sync: false
+      - key: WF21_R2_BUCKET
+        sync: false
+      - key: WF21_R2_ACCESS_KEY_ID
+        sync: false
+      - key: WF21_R2_SECRET_ACCESS_KEY
+        sync: false
+

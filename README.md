@@ -77,10 +77,14 @@ Commands:
 - `/list`
 - `/run <workflow> [args...]`
 
+Workflow toggle:
+
+- In `workflows.yaml`, set `enabled: false` under a workflow to disable it without deleting its block.
+
 Default workflow list includes:
 
 - `workflow_1_mm_lh_provided`
-- `workflow_2_ob_pending_dispatch`
+- `workflow_2_1_drive_csv_consolidation`
 
 ### System account mode
 
@@ -270,6 +274,61 @@ Run in watch mode locally:
 $env:WF2_CONTINUOUS = "true"
 $env:WF2_POLL_INTERVAL_SECONDS = "5"
 go run ./cmd/workflow-ob-pending-dispatch
+```
+
+## Workflow 2.1: Drive ZIP CSV Consolidation -> R2 -> Filtered Sheet Import
+
+`workflow_2_1_drive_csv_consolidation` does:
+
+1. Polls a Google Drive parent folder for the latest `.zip`.
+2. Reads all `.csv` files from that zip and consolidates into one CSV.
+3. Keeps only the first CSV header as canonical header and aligns subsequent rows by header name.
+4. Detects/drops hidden leading unnamed column (default enabled).
+5. Uploads consolidated CSV to Cloudflare R2.
+6. Imports filtered rows to destination Google Sheet tab in batches (lightweight for large datasets).
+
+Defaults:
+
+- Drive parent folder: `1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ`
+- Destination sheet: `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA`
+- Destination tab: `generated_file`
+- Filter:
+  - `Current Station` = `SOC 5`
+  - `Receiver Type` = `Station`
+- Output columns:
+  - `TO Number`, `SPX Tracking Number`, `Receiver Name`, `TO Number`, `Operator`, `Create Time`, `Complete Time`, `Remark`, `Receive Status`, `Staging Area ID`
+
+Required env:
+
+- Google credentials via one of:
+  - `WF21_GOOGLE_CREDENTIALS_FILE` (or `GOOGLE_APPLICATION_CREDENTIALS`)
+  - `WF21_GOOGLE_CREDENTIALS_JSON`
+- `WF21_R2_ACCOUNT_ID`
+- `WF21_R2_BUCKET`
+- `WF21_R2_ACCESS_KEY_ID`
+- `WF21_R2_SECRET_ACCESS_KEY`
+
+Optional env:
+
+- `WF21_DRIVE_PARENT_FOLDER_ID`
+- `WF21_DESTINATION_SHEET_ID`
+- `WF21_DESTINATION_TAB`
+- `WF21_R2_OBJECT_PREFIX` (default `wf2-1`)
+- `WF21_STATE_FILE`
+- `WF21_STATUS_FILE` (set `none` to disable)
+- `WF21_BOOTSTRAP_PROCESS_EXISTING` (default `true`)
+- `WF21_DROP_LEADING_UNNAMED_COLUMN` (default `true`)
+- `WF21_DRY_RUN` (default `false`)
+- `WF21_CONTINUOUS` (default `true`)
+- `WF21_POLL_INTERVAL_SECONDS` (default `30`)
+- `WF21_SHEETS_BATCH_SIZE` (default `1000`)
+- `WF21_TEMP_DIR` (optional)
+
+Run one-shot locally:
+
+```powershell
+$env:WF21_CONTINUOUS = "false"
+go run ./cmd/workflow-drive-csv-consolidation
 ```
 
 ## Render deployment (24/7)
