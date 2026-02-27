@@ -222,89 +222,119 @@ func runCycle(
 		StatusFile:  cfg.StatusFile,
 	}
 
-	file, found, err := findLatestZipFile(ctx, driveSvc, cfg.DriveParentFolderID)
+	files, err := listZipFiles(ctx, driveSvc, cfg.DriveParentFolderID)
 	if err != nil {
 		return err
 	}
-	if !found {
+	if len(files) == 0 {
 		status.FoundZip = false
 		status.Message = "no zip files found in parent folder"
 		writeStatusIfConfigured(cfg.StatusFile, status, logger)
 		logger.Printf("no zip files found parent_folder=%s", cfg.DriveParentFolderID)
 		return nil
 	}
+	latest := files[len(files)-1]
 
 	status.FoundZip = true
-	status.FileID = file.ID
-	status.FileName = file.Name
-	status.FileModified = file.ModifiedTime.Format(time.RFC3339)
-	status.FileMD5 = file.MD5Checksum
-
-	changed := shouldProcessFile(file, *state, *stateExists)
-	status.Changed = changed
+	status.FileID = latest.ID
+	status.FileName = latest.Name
+	status.FileModified = latest.ModifiedTime.Format(time.RFC3339)
+	status.FileMD5 = latest.MD5Checksum
 
 	if !*stateExists && !cfg.BootstrapProcessExisting {
-		state.LastProcessedFileID = file.ID
-		state.LastProcessedFileMD5 = file.MD5Checksum
-		state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339)
+		state.LastProcessedFileID = latest.ID
+		state.LastProcessedFileMD5 = latest.MD5Checksum
+		state.LastProcessedModifiedTime = latest.ModifiedTime.Format(time.RFC3339)
 		state.LastProcessedAt = now.Format(time.RFC3339)
 		if err = saveState(cfg.StateFile, *state); err != nil {
 			return err
 		}
 		*stateExists = true
+		status.Changed = false
 		status.Message = "baseline set from latest zip (bootstrap disabled)"
 		writeStatusIfConfigured(cfg.StatusFile, status, logger)
-		logger.Printf("baseline set file_id=%s file_name=%q", file.ID, file.Name)
+		logger.Printf("baseline set file_id=%s file_name=%q", latest.ID, latest.Name)
 		return nil
 	}
 
-	if !changed {
-		status.Message = "latest zip already processed"
+	var pending []driveZipFile
+	if !*stateExists {
+		pending = []driveZipFile{latest}
+	} else {
+		pending = selectPendingZipFiles(files, *state)
+	}
+	status.Changed = len(pending) > 0
+
+	if len(pending) == 0 {
+		status.Message = "no new zip files to process"
 		writeStatusIfConfigured(cfg.StatusFile, status, logger)
-		logger.Printf("already processed file_id=%s file_name=%q", file.ID, file.Name)
+		logger.Printf("already processed latest file_id=%s file_name=%q", latest.ID, latest.Name)
 		return nil
 	}
 
-	zipPath, err := downloadDriveFileToTemp(ctx, driveSvc, file.ID, cfg.TempDir)
-	if err != nil {
-		return fmt.Errorf("download zip %s: %w", file.ID, err)
-	}
-	defer os.Remove(zipPath)
-
-	result, err := processZipAndImport(ctx, cfg, sheetsSvc, r2Client, file, zipPath)
-	if err != nil {
-		return err
-	}
-
-	state.LastProcessedFileID = file.ID
-	state.LastProcessedFileMD5 = file.MD5Checksum
-	state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339)
-	state.LastProcessedAt = now.Format(time.RFC3339)
-	state.LastUploadedObjectKey = result.ObjectKey
-	if err = saveState(cfg.StateFile, *state); err != nil {
-		return err
-	}
-	*stateExists = true
-
-	status.CSVFilesProcessed = result.CSVFilesProcessed
-	status.RowsConsolidated = result.RowsConsolidated
-	status.RowsImported = result.RowsImported
-	status.ObjectKey = result.ObjectKey
-	status.ObjectBytes = result.ObjectBytes
-	status.Message = "processed latest zip successfully"
-	writeStatusIfConfigured(cfg.StatusFile, status, logger)
-
-	logger.Printf(
-		"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d dry_run=%t",
-		file.ID,
-		file.Name,
-		result.CSVFilesProcessed,
-		result.RowsConsolidated,
-		result.RowsImported,
-		result.ObjectKey,
-		result.ObjectBytes,
-		cfg.DryRun,
+	var (
+		totalResult        processResult
+		lastProcessedFile  driveZipFile
+		lastProcessedCycle processResult
 	)
+	for _, file := range pending {
+		zipPath, downloadErr := downloadDriveFileToTemp(ctx, driveSvc, file.ID, cfg.TempDir)
+		if downloadErr != nil {
+			return fmt.Errorf("download zip %s: %w", file.ID, downloadErr)
+		}
+
+		result, processErr := processZipAndImport(ctx, cfg, sheetsSvc, r2Client, file, zipPath)
+		removeErr := os.Remove(zipPath)
+		if processErr != nil {
+			return processErr
+		}
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return fmt.Errorf("cleanup temp zip %s: %w", zipPath, removeErr)
+		}
+
+		totalResult.CSVFilesProcessed += result.CSVFilesProcessed
+		totalResult.RowsConsolidated += result.RowsConsolidated
+		totalResult.RowsImported += result.RowsImported
+		totalResult.ObjectBytes += result.ObjectBytes
+
+		lastProcessedFile = file
+		lastProcessedCycle = result
+		totalResult.ObjectKey = result.ObjectKey
+
+		state.LastProcessedFileID = file.ID
+		state.LastProcessedFileMD5 = file.MD5Checksum
+		state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339)
+		state.LastProcessedAt = now.Format(time.RFC3339)
+		state.LastUploadedObjectKey = result.ObjectKey
+		if err = saveState(cfg.StateFile, *state); err != nil {
+			return err
+		}
+		*stateExists = true
+
+		logger.Printf(
+			"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d dry_run=%t",
+			file.ID,
+			file.Name,
+			result.CSVFilesProcessed,
+			result.RowsConsolidated,
+			result.RowsImported,
+			result.ObjectKey,
+			result.ObjectBytes,
+			cfg.DryRun,
+		)
+	}
+
+	status.FileID = lastProcessedFile.ID
+	status.FileName = lastProcessedFile.Name
+	status.FileModified = lastProcessedFile.ModifiedTime.Format(time.RFC3339)
+	status.FileMD5 = lastProcessedFile.MD5Checksum
+	status.CSVFilesProcessed = totalResult.CSVFilesProcessed
+	status.RowsConsolidated = totalResult.RowsConsolidated
+	status.RowsImported = totalResult.RowsImported
+	status.ObjectKey = lastProcessedCycle.ObjectKey
+	status.ObjectBytes = lastProcessedCycle.ObjectBytes
+	status.Message = fmt.Sprintf("processed %d new zip file(s)", len(pending))
+	writeStatusIfConfigured(cfg.StatusFile, status, logger)
 	return nil
 }
 
@@ -637,40 +667,65 @@ func newR2Client(ctx context.Context, cfg workflowConfig) (*s3.Client, error) {
 	return client, nil
 }
 
-func findLatestZipFile(ctx context.Context, driveSvc *drive.Service, parentFolderID string) (driveZipFile, bool, error) {
+func listZipFiles(ctx context.Context, driveSvc *drive.Service, parentFolderID string) ([]driveZipFile, error) {
 	query := fmt.Sprintf("'%s' in parents and trashed=false and (mimeType='application/zip' or name contains '.zip' or name contains '.ZIP')", parentFolderID)
-	resp, err := driveSvc.Files.List().
-		Q(query).
-		OrderBy("modifiedTime desc").
-		PageSize(20).
-		SupportsAllDrives(true).
-		IncludeItemsFromAllDrives(true).
-		Fields("files(id,name,md5Checksum,modifiedTime,size,mimeType)").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return driveZipFile{}, false, fmt.Errorf("list drive files: %w", err)
+	out := make([]driveZipFile, 0, 32)
+
+	pageToken := ""
+	for {
+		call := driveSvc.Files.List().
+			Q(query).
+			OrderBy("modifiedTime asc,name asc").
+			PageSize(200).
+			SupportsAllDrives(true).
+			IncludeItemsFromAllDrives(true).
+			Fields("nextPageToken,files(id,name,md5Checksum,modifiedTime,size,mimeType)").
+			Context(ctx)
+		if pageToken != "" {
+			call = call.PageToken(pageToken)
+		}
+
+		resp, err := call.Do()
+		if err != nil {
+			return nil, fmt.Errorf("list drive files: %w", err)
+		}
+		for _, f := range resp.Files {
+			if f == nil {
+				continue
+			}
+			if !strings.EqualFold(filepath.Ext(f.Name), ".zip") && !strings.EqualFold(f.MimeType, "application/zip") {
+				continue
+			}
+			modified, parseErr := time.Parse(time.RFC3339, f.ModifiedTime)
+			if parseErr != nil {
+				modified = time.Time{}
+			}
+			out = append(out, driveZipFile{
+				ID:           f.Id,
+				Name:         f.Name,
+				MD5Checksum:  f.Md5Checksum,
+				ModifiedTime: modified,
+				Size:         f.Size,
+			})
+		}
+		if strings.TrimSpace(resp.NextPageToken) == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
 	}
-	for _, f := range resp.Files {
-		if f == nil {
-			continue
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ModifiedTime.Equal(out[j].ModifiedTime) {
+			leftName := strings.ToLower(strings.TrimSpace(out[i].Name))
+			rightName := strings.ToLower(strings.TrimSpace(out[j].Name))
+			if leftName == rightName {
+				return strings.TrimSpace(out[i].ID) < strings.TrimSpace(out[j].ID)
+			}
+			return leftName < rightName
 		}
-		if !strings.EqualFold(filepath.Ext(f.Name), ".zip") && !strings.EqualFold(f.MimeType, "application/zip") {
-			continue
-		}
-		modified, parseErr := time.Parse(time.RFC3339, f.ModifiedTime)
-		if parseErr != nil {
-			modified = time.Time{}
-		}
-		return driveZipFile{
-			ID:           f.Id,
-			Name:         f.Name,
-			MD5Checksum:  f.Md5Checksum,
-			ModifiedTime: modified,
-			Size:         f.Size,
-		}, true, nil
-	}
-	return driveZipFile{}, false, nil
+		return out[i].ModifiedTime.Before(out[j].ModifiedTime)
+	})
+	return out, nil
 }
 
 func downloadDriveFileToTemp(ctx context.Context, driveSvc *drive.Service, fileID, tempDir string) (string, error) {
@@ -698,7 +753,7 @@ func downloadDriveFileToTemp(ctx context.Context, driveSvc *drive.Service, fileI
 }
 
 func clearDestinationSheet(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) error {
-	_, err := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:ZZ", tab), &sheets.ClearValuesRequest{}).Context(ctx).Do()
+	_, err := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:J", tab), &sheets.ClearValuesRequest{}).Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("clear destination sheet: %w", err)
 	}
@@ -869,11 +924,11 @@ func buildObjectKey(prefix string, file driveZipFile, now time.Time) string {
 	if base == "" {
 		base = "input"
 	}
-	shortID := file.ID
-	if len(shortID) > 8 {
-		shortID = shortID[:8]
+	fileID := sanitizeObjectToken(file.ID)
+	if fileID == "" {
+		fileID = "unknown"
 	}
-	name := fmt.Sprintf("%s-%s-%s.csv", now.Format("20060102T150405Z"), base, sanitizeObjectToken(shortID))
+	name := fmt.Sprintf("%s-%s-%s.csv", now.Format("20060102T150405.000000000Z"), base, fileID)
 	cleanPrefix := strings.Trim(strings.TrimSpace(prefix), "/")
 	if cleanPrefix == "" {
 		return name
@@ -915,6 +970,45 @@ func shouldProcessFile(file driveZipFile, state workflowState, stateExists bool)
 		return true
 	}
 	return false
+}
+
+func selectPendingZipFiles(files []driveZipFile, state workflowState) []driveZipFile {
+	if len(files) == 0 {
+		return nil
+	}
+
+	lastModified, err := time.Parse(time.RFC3339, strings.TrimSpace(state.LastProcessedModifiedTime))
+	if err != nil {
+		latest := files[len(files)-1]
+		if shouldProcessFile(latest, state, true) {
+			return []driveZipFile{latest}
+		}
+		return nil
+	}
+
+	lastID := strings.TrimSpace(state.LastProcessedFileID)
+	pending := make([]driveZipFile, 0)
+	for _, file := range files {
+		if file.ModifiedTime.After(lastModified) {
+			pending = append(pending, file)
+			continue
+		}
+		if !file.ModifiedTime.Equal(lastModified) {
+			continue
+		}
+
+		fileID := strings.TrimSpace(file.ID)
+		if fileID == lastID {
+			if shouldProcessFile(file, state, true) {
+				pending = append(pending, file)
+			}
+			continue
+		}
+		if lastID == "" || fileID > lastID {
+			pending = append(pending, file)
+		}
+	}
+	return pending
 }
 
 func normalizeHeaderRecord(header []string, dropLeadingUnnamed bool) ([]string, bool) {

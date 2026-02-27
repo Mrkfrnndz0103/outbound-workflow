@@ -280,12 +280,12 @@ go run ./cmd/workflow-ob-pending-dispatch
 
 `workflow_2_1_drive_csv_consolidation` does:
 
-1. Polls a Google Drive parent folder for the latest `.zip`.
+1. Polls a Google Drive parent folder for new `.zip` files and processes pending uploads oldest -> newest.
 2. Reads all `.csv` files from that zip and consolidates into one CSV.
 3. Keeps only the first CSV header as canonical header and aligns subsequent rows by header name.
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
-6. Imports filtered rows to destination Google Sheet tab in batches (lightweight for large datasets).
+6. Overwrites only destination columns `A:J` (keeps `K+` formulas untouched) and imports filtered rows in batches (lightweight for large datasets).
 
 Defaults:
 

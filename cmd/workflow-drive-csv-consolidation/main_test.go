@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestNormalizeHeaderRecordDropsLeadingUnnamed(t *testing.T) {
 	input := []string{"", "TO Number", "Receiver Type", "Current Station"}
@@ -46,5 +49,50 @@ func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	}
 	if picked[0] != "TO-1" || picked[3] != "TO-1" {
 		t.Fatalf("expected duplicated TO Number column, got: %#v", picked)
+	}
+}
+
+func TestSelectPendingZipFilesProcessesAllNewerFiles(t *testing.T) {
+	t1 := time.Date(2026, 2, 27, 17, 30, 0, 0, time.UTC)
+	t2 := t1.Add(1 * time.Minute)
+	t3 := t1.Add(2 * time.Minute)
+
+	files := []driveZipFile{
+		{ID: "zip-a", ModifiedTime: t1},
+		{ID: "zip-b", ModifiedTime: t2},
+		{ID: "zip-c", ModifiedTime: t3},
+	}
+	state := workflowState{
+		LastProcessedFileID:       "zip-a",
+		LastProcessedModifiedTime: t1.Format(time.RFC3339),
+	}
+
+	pending := selectPendingZipFiles(files, state)
+	if len(pending) != 2 {
+		t.Fatalf("expected 2 pending files, got %d", len(pending))
+	}
+	if pending[0].ID != "zip-b" || pending[1].ID != "zip-c" {
+		t.Fatalf("unexpected pending order: %#v", pending)
+	}
+}
+
+func TestSelectPendingZipFilesSameTimestampUsesFileIDCursor(t *testing.T) {
+	t1 := time.Date(2026, 2, 27, 17, 30, 0, 0, time.UTC)
+	files := []driveZipFile{
+		{ID: "zip-a", ModifiedTime: t1},
+		{ID: "zip-b", ModifiedTime: t1},
+		{ID: "zip-c", ModifiedTime: t1},
+	}
+	state := workflowState{
+		LastProcessedFileID:       "zip-b",
+		LastProcessedModifiedTime: t1.Format(time.RFC3339),
+	}
+
+	pending := selectPendingZipFiles(files, state)
+	if len(pending) != 1 {
+		t.Fatalf("expected 1 pending file, got %d", len(pending))
+	}
+	if pending[0].ID != "zip-c" {
+		t.Fatalf("expected zip-c pending, got %#v", pending)
 	}
 }

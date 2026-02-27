@@ -10,14 +10,14 @@ go run ./cmd/workflow-drive-csv-consolidation
 
 ## What it does
 
-1. Watches a Google Drive parent folder for the latest `.zip` upload.
+1. Watches a Google Drive parent folder for new `.zip` uploads and processes pending files oldest -> newest.
 2. Reads all `.csv` files from the zip.
 3. Consolidates CSV files into one canonical CSV:
    - Uses the first CSV header as canonical.
    - Aligns subsequent CSV rows by header name.
    - Optionally drops hidden/unnamed leading column (default enabled).
 4. Uploads the consolidated CSV to Cloudflare R2.
-5. Writes filtered rows to a destination Google Sheet tab.
+5. Writes filtered rows to destination columns `A:J` only (does not clear `K+`).
 
 ## Default source/destination
 
@@ -53,7 +53,7 @@ Imported output columns (in order):
 - CSV rows are streamed file-by-file.
 - Consolidated CSV is streamed to temp output file.
 - Google Sheet writes are chunked in batches (`WF21_SHEETS_BATCH_SIZE`, default `5000`).
-- State file prevents reprocessing the same latest zip.
+- State file tracks the processed cursor and prevents reprocessing already handled zips.
 
 ## Required environment variables
 
