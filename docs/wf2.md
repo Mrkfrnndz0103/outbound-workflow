@@ -17,7 +17,7 @@ go run ./cmd/workflow-drive-csv-consolidation
    - Aligns subsequent CSV rows by header name.
    - Optionally drops hidden/unnamed leading column (default enabled).
 4. Uploads the consolidated CSV to Cloudflare R2.
-5. Writes filtered rows to destination columns `A:J` only (does not clear `K+`).
+5. Writes filtered rows to destination columns `A:K` only (does not clear `L+`).
 
 ## Default source/destination
 
@@ -39,13 +39,14 @@ Imported output columns (in order):
 1. `TO Number`
 2. `SPX Tracking Number`
 3. `Receiver Name`
-4. `TO Number`
-5. `Operator`
-6. `Create Time`
-7. `Complete Time`
-8. `Remark`
-9. `Receive Status`
-10. `Staging Area ID`
+4. `TO Order Quantity`
+5. `TO Number`
+6. `Operator`
+7. `Create Time`
+8. `Complete Time`
+9. `Remark`
+10. `Receive Status`
+11. `Staging Area ID`
 
 ## Lightweight strategy for large files (100k+ rows)
 

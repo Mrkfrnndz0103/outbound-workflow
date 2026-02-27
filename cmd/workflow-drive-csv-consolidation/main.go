@@ -754,7 +754,8 @@ func downloadDriveFileToTemp(ctx context.Context, driveSvc *drive.Service, fileI
 }
 
 func clearDestinationSheet(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) error {
-	_, err := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:J", tab), &sheets.ClearValuesRequest{}).Context(ctx).Do()
+	endCol := columnNameFromIndex(len(selectedOutputHeaders))
+	_, err := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:%s", tab, endCol), &sheets.ClearValuesRequest{}).Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("clear destination sheet: %w", err)
 	}
@@ -769,7 +770,8 @@ func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 	vr := &sheets.ValueRange{
 		Values: [][]interface{}{values},
 	}
-	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, fmt.Sprintf("%s!A1:J1", tab), vr).
+	endCol := columnNameFromIndex(len(headers))
+	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, fmt.Sprintf("%s!A1:%s1", tab, endCol), vr).
 		ValueInputOption("RAW").
 		Context(ctx).
 		Do()
@@ -802,7 +804,8 @@ func writeRowsBatch(
 	if err := ensureSheetGridCapacity(ctx, sheetsSvc, sheetID, tab, endRow, len(selectedOutputHeaders), gridState); err != nil {
 		return err
 	}
-	targetRange := fmt.Sprintf("%s!A%d:J%d", tab, startRow, endRow)
+	endCol := columnNameFromIndex(len(selectedOutputHeaders))
+	targetRange := fmt.Sprintf("%s!A%d:%s%d", tab, startRow, endCol, endRow)
 	vr := &sheets.ValueRange{Values: payload}
 	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
 		ValueInputOption("RAW").
@@ -1265,4 +1268,18 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func columnNameFromIndex(index int) string {
+	if index <= 0 {
+		return "A"
+	}
+	value := index
+	var out []byte
+	for value > 0 {
+		value--
+		out = append([]byte{byte('A' + (value % 26))}, out...)
+		value /= 26
+	}
+	return string(out)
 }

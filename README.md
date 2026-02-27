@@ -285,7 +285,7 @@ go run ./cmd/workflow-ob-pending-dispatch
 3. Keeps only the first CSV header as canonical header and aligns subsequent rows by header name.
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
-6. Overwrites only destination columns `A:J` (keeps `K+` formulas untouched) and imports filtered rows in batches (lightweight for large datasets).
+6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports filtered rows in batches (lightweight for large datasets).
 
 Defaults:
 
@@ -296,7 +296,7 @@ Defaults:
   - `Current Station` = `SOC 5`
   - `Receiver Type` = `Station`
 - Output columns:
-  - `TO Number`, `SPX Tracking Number`, `Receiver Name`, `TO Number`, `Operator`, `Create Time`, `Complete Time`, `Remark`, `Receive Status`, `Staging Area ID`
+  - `TO Number`, `SPX Tracking Number`, `Receiver Name`, `TO Order Quantity`, `TO Number`, `Operator`, `Create Time`, `Complete Time`, `Remark`, `Receive Status`, `Staging Area ID`
 
 Required env:
 
