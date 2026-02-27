@@ -7,16 +7,6 @@ workflows:
     timeout_seconds: 120
     allow_extra_args: false
 
-  workflow_2_ob_pending_dispatch:
-    command: go
-    args:
-      - run
-      - ./cmd/workflow-ob-pending-dispatch
-    timeout_seconds: 120
-    allow_extra_args: false
-    env:
-      WF2_CONTINUOUS: "false"
-
   ping:
     command: cmd
     args:
