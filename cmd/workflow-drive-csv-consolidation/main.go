@@ -49,6 +49,7 @@ var selectedOutputHeaders = []string{
 	"TO Number",
 	"SPX Tracking Number",
 	"Receiver Name",
+	"TO Order Quantity",
 	"TO Number",
 	"Operator",
 	"Create Time",
