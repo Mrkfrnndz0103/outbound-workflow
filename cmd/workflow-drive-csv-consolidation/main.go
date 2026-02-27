@@ -41,7 +41,7 @@ const (
 	defaultStatusFile = "data/workflow2-1-drive-csv-consolidation-status.json"
 
 	defaultPollInterval  = 30 * time.Second
-	defaultSheetsBatch   = 1000
+	defaultSheetsBatch   = 5000
 	defaultR2ObjectPrefx = "wf2-1"
 )
 
@@ -134,6 +134,13 @@ type processResult struct {
 	RowsImported      int64
 	ObjectKey         string
 	ObjectBytes       int64
+}
+
+type sheetGridState struct {
+	sheetID int64
+	rows    int
+	cols    int
+	loaded  bool
 }
 
 func main() {
@@ -365,8 +372,12 @@ func processZipAndImport(
 	filterReceiverTypeIdx := -1
 	nextSheetRow := 2
 	pendingSheetRows := make([][]string, 0, cfg.SheetsBatchSize)
+	var gridState sheetGridState
 
 	if !cfg.DryRun {
+		if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, &gridState); err != nil {
+			return result, err
+		}
 		if err = clearDestinationSheet(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab); err != nil {
 			return result, err
 		}
@@ -443,7 +454,7 @@ func processZipAndImport(
 				if !cfg.DryRun {
 					pendingSheetRows = append(pendingSheetRows, picked)
 					if len(pendingSheetRows) >= cfg.SheetsBatchSize {
-						if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows); err != nil {
+						if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows, &gridState); err != nil {
 							entryReader.Close()
 							return result, err
 						}
@@ -473,7 +484,7 @@ func processZipAndImport(
 	}
 
 	if !cfg.DryRun && len(pendingSheetRows) > 0 {
-		if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows); err != nil {
+		if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows, &gridState); err != nil {
 			return result, err
 		}
 	}
@@ -712,7 +723,14 @@ func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 	return nil
 }
 
-func writeRowsBatch(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string, startRow int, rows [][]string) error {
+func writeRowsBatch(
+	ctx context.Context,
+	sheetsSvc *sheets.Service,
+	sheetID, tab string,
+	startRow int,
+	rows [][]string,
+	gridState *sheetGridState,
+) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -725,6 +743,9 @@ func writeRowsBatch(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 		payload = append(payload, items)
 	}
 	endRow := startRow + len(rows) - 1
+	if err := ensureSheetGridCapacity(ctx, sheetsSvc, sheetID, tab, endRow, len(selectedOutputHeaders), gridState); err != nil {
+		return err
+	}
 	targetRange := fmt.Sprintf("%s!A%d:J%d", tab, startRow, endRow)
 	vr := &sheets.ValueRange{Values: payload}
 	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
@@ -734,6 +755,98 @@ func writeRowsBatch(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 	if err != nil {
 		return fmt.Errorf("write rows batch [%d..%d]: %w", startRow, endRow, err)
 	}
+	return nil
+}
+
+func loadSheetGridState(ctx context.Context, sheetsSvc *sheets.Service, spreadsheetID, tab string, state *sheetGridState) error {
+	if state != nil && state.loaded {
+		return nil
+	}
+	resp, err := sheetsSvc.Spreadsheets.Get(spreadsheetID).
+		Fields("sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return fmt.Errorf("load destination sheet metadata: %w", err)
+	}
+	for _, sh := range resp.Sheets {
+		if sh == nil || sh.Properties == nil {
+			continue
+		}
+		if sh.Properties.Title != tab {
+			continue
+		}
+		rows := 1000
+		cols := 26
+		if sh.Properties.GridProperties != nil {
+			if sh.Properties.GridProperties.RowCount > 0 {
+				rows = int(sh.Properties.GridProperties.RowCount)
+			}
+			if sh.Properties.GridProperties.ColumnCount > 0 {
+				cols = int(sh.Properties.GridProperties.ColumnCount)
+			}
+		}
+		if state != nil {
+			state.sheetID = sh.Properties.SheetId
+			state.rows = rows
+			state.cols = cols
+			state.loaded = true
+		}
+		return nil
+	}
+	return fmt.Errorf("destination tab %q not found in sheet %s", tab, spreadsheetID)
+}
+
+func ensureSheetGridCapacity(
+	ctx context.Context,
+	sheetsSvc *sheets.Service,
+	spreadsheetID, tab string,
+	requiredRows, requiredCols int,
+	state *sheetGridState,
+) error {
+	if state == nil {
+		return errors.New("sheet grid state is required")
+	}
+	if err := loadSheetGridState(ctx, sheetsSvc, spreadsheetID, tab, state); err != nil {
+		return err
+	}
+
+	needsRows := requiredRows > state.rows
+	needsCols := requiredCols > state.cols
+	if !needsRows && !needsCols {
+		return nil
+	}
+
+	newRows := state.rows
+	newCols := state.cols
+	if needsRows {
+		newRows = requiredRows
+	}
+	if needsCols {
+		newCols = requiredCols
+	}
+
+	req := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{
+			{
+				UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+					Properties: &sheets.SheetProperties{
+						SheetId: state.sheetID,
+						GridProperties: &sheets.GridProperties{
+							RowCount:    int64(newRows),
+							ColumnCount: int64(newCols),
+						},
+					},
+					Fields: "gridProperties(rowCount,columnCount)",
+				},
+			},
+		},
+	}
+	if _, err := sheetsSvc.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("resize destination sheet to rows=%d cols=%d: %w", newRows, newCols, err)
+	}
+	state.rows = newRows
+	state.cols = newCols
 	return nil
 }
 

@@ -323,7 +323,7 @@ Optional env:
 - `WF21_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF21_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF21_POLL_INTERVAL_SECONDS` (default `30`)
-- `WF21_SHEETS_BATCH_SIZE` (default `1000`)
+- `WF21_SHEETS_BATCH_SIZE` (default `5000`)
 - `WF21_TEMP_DIR` (optional)
 
 Run one-shot locally:

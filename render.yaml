@@ -97,7 +97,7 @@ services:
       - key: WF21_POLL_INTERVAL_SECONDS
         value: "30"
       - key: WF21_SHEETS_BATCH_SIZE
-        value: "1000"
+        value: "5000"
       - key: WF21_TEMP_DIR
         value: ""
       - key: WF21_GOOGLE_CREDENTIALS_JSON

@@ -52,7 +52,7 @@ Imported output columns (in order):
 - Zip is downloaded to temp file (disk), not memory.
 - CSV rows are streamed file-by-file.
 - Consolidated CSV is streamed to temp output file.
-- Google Sheet writes are chunked in batches (`WF21_SHEETS_BATCH_SIZE`, default `1000`).
+- Google Sheet writes are chunked in batches (`WF21_SHEETS_BATCH_SIZE`, default `5000`).
 - State file prevents reprocessing the same latest zip.
 
 ## Required environment variables
@@ -90,7 +90,7 @@ Imported output columns (in order):
 - `WF21_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF21_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF21_POLL_INTERVAL_SECONDS` (default `30`)
-- `WF21_SHEETS_BATCH_SIZE` (default `1000`)
+- `WF21_SHEETS_BATCH_SIZE` (default `5000`)
 - `WF21_TEMP_DIR` (optional temp directory override)
 
 ## Render note for plans without worker service type
