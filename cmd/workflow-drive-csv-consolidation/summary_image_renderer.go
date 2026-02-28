@@ -110,6 +110,11 @@ var (
 	fontFaceMap  = map[string]font.Face{}
 )
 
+const (
+	minRenderedFontSize = 4.0
+	maxRenderedFontSize = 144.0
+)
+
 type summaryImageSendResult struct {
 	Stable   bool
 	Format   string
@@ -977,12 +982,7 @@ func loadFace(fontFamily string, isBold bool, isItalic bool, size float64) font.
 	if fontInitErr != nil {
 		return basicfont.Face7x13
 	}
-	if size < 8 {
-		size = 8
-	}
-	if size > 42 {
-		size = 42
-	}
+	size = clampRenderedFontSize(size)
 
 	family := normalizeFontFamily(fontFamily)
 	key := fmt.Sprintf("%s:%t:%t:%.1f", family, isBold, isItalic, size)
@@ -1037,6 +1037,16 @@ func loadFace(fontFamily string, isBold bool, isItalic bool, size float64) font.
 	}
 	fontFaceMap[key] = face
 	return face
+}
+
+func clampRenderedFontSize(size float64) float64 {
+	if size < minRenderedFontSize {
+		return minRenderedFontSize
+	}
+	if size > maxRenderedFontSize {
+		return maxRenderedFontSize
+	}
+	return size
 }
 
 func normalizeFontFamily(raw string) string {

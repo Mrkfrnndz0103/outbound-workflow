@@ -122,3 +122,15 @@ func TestBuildSummaryCaptionForBot(t *testing.T) {
 		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
 	}
 }
+
+func TestClampRenderedFontSize(t *testing.T) {
+	if got := clampRenderedFontSize(1.5); got != minRenderedFontSize {
+		t.Fatalf("expected min clamp %v, got %v", minRenderedFontSize, got)
+	}
+	if got := clampRenderedFontSize(200); got != maxRenderedFontSize {
+		t.Fatalf("expected max clamp %v, got %v", maxRenderedFontSize, got)
+	}
+	if got := clampRenderedFontSize(18); got != 18 {
+		t.Fatalf("expected unchanged font size 18, got %v", got)
+	}
+}
