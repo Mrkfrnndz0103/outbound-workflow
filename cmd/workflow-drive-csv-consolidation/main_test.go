@@ -108,7 +108,7 @@ func TestBuildSheetRangeRefQuotesSpecialTab(t *testing.T) {
 func TestBuildSummaryCaption(t *testing.T) {
 	ts := time.Date(2026, 2, 28, 21, 7, 0, 0, time.FixedZone("UTC+8", 8*3600))
 	got := buildSummaryCaption(ts)
-	want := "Outbound Pending for Dispatch as of [9:07 PM Feb-28 (local)]"
+	want := "@All\nOutbound Pending for Dispatch as of 9:07 PM Feb-28. Thanks!"
 	if got != want {
 		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
 	}
@@ -117,7 +117,7 @@ func TestBuildSummaryCaption(t *testing.T) {
 func TestBuildSummaryCaptionForBot(t *testing.T) {
 	ts := time.Date(2026, 2, 28, 21, 7, 0, 0, time.FixedZone("UTC+8", 8*3600))
 	got := buildSummaryCaptionForBot(ts)
-	want := "<mention-tag target=\"seatalk://user?id=0\"/> Outbound Pending for Dispatch as of [9:07 PM Feb-28 (local)]"
+	want := "<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of 9:07 PM Feb-28. Thanks!"
 	if got != want {
 		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
 	}

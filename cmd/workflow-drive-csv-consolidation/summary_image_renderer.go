@@ -174,15 +174,15 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 
 func buildSummaryCaption(ts time.Time) string {
 	return fmt.Sprintf(
-		"Outbound Pending for Dispatch as of [%s (local)]",
+		"@All\nOutbound Pending for Dispatch as of %s. Thanks!",
 		ts.Format("3:04 PM Jan-02"),
 	)
 }
 
 func buildSummaryCaptionForBot(ts time.Time) string {
 	return fmt.Sprintf(
-		"<mention-tag target=\"seatalk://user?id=0\"/> %s",
-		buildSummaryCaption(ts),
+		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of %s. Thanks!",
+		ts.Format("3:04 PM Jan-02"),
 	)
 }
 
