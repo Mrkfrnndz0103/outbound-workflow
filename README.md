@@ -40,7 +40,13 @@ SeaTalk setup:
 - Subscribe to:
   - `event_verification`
   - `message_from_bot_subscriber`
-  - `new_bot_subscriber` (optional)
+  - `new_bot_subscriber` (deprecated but supported)
+  - `user_enter_chatroom_with_bot`
+  - `new_mentioned_message_from_group_chat` / `new_mentioned_message_received_from_group_chat`
+  - `new_message_received_from_thread`
+  - `interactive_message_click`
+  - `bot_added_to_group_chat`
+  - `bot_removed_from_group_chat`
 
 ### System account mode
 
@@ -286,6 +292,7 @@ go run ./cmd/workflow-ob-pending-dispatch
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
 6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports filtered rows in batches (lightweight for large datasets).
+7. After import, waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group via system account webhook.
 
 Defaults:
 
@@ -307,6 +314,9 @@ Required env:
 - `WF21_R2_BUCKET`
 - `WF21_R2_ACCESS_KEY_ID`
 - `WF21_R2_SECRET_ACCESS_KEY`
+- `WF21_SUMMARY_SEATALK_MODE` (`bot` or `webhook`) when `WF21_SUMMARY_SEND_ENABLED=true` (default)
+- `WF21_SEATALK_GROUP_ID` + `WF21_SEATALK_APP_ID` / `WF21_SEATALK_APP_SECRET` when mode is `bot` (supports `WF2_*` and global `SEATALK_*` fallbacks)
+- `WF21_SEATALK_WEBHOOK_URL` (or `SEATALK_SYSTEM_WEBHOOK_URL`) when mode is `webhook`
 
 Optional env:
 
@@ -325,6 +335,22 @@ Optional env:
 - `WF21_POLL_INTERVAL_SECONDS` (default `30`)
 - `WF21_SHEETS_BATCH_SIZE` (default `5000`)
 - `WF21_TEMP_DIR` (optional)
+- `WF21_SUMMARY_SEND_ENABLED` (default `true`)
+- `WF21_SUMMARY_SEATALK_MODE` (default `bot`)
+- `WF21_SEATALK_GROUP_ID` (fallback to `WF2_SEATALK_GROUP_ID`)
+- `WF21_SEATALK_APP_ID` / `WF21_SEATALK_APP_SECRET` (fallback to `WF2_SEATALK_APP_ID` / `WF2_SEATALK_APP_SECRET`, then `SEATALK_APP_ID` / `SEATALK_APP_SECRET`)
+- `WF21_SEATALK_BASE_URL` (fallback to `WF2_SEATALK_BASE_URL`, then `SEATALK_BASE_URL`, default `https://openapi.seatalk.io`)
+- `WF21_SEATALK_WEBHOOK_URL` (fallback to `SEATALK_SYSTEM_WEBHOOK_URL`)
+- `WF21_SUMMARY_SHEET_ID` (default `WF21_DESTINATION_SHEET_ID`)
+- `WF21_SUMMARY_TAB` (default `[SOC] Backlogs Summary`)
+- `WF21_SUMMARY_RANGE` (default `B2:Q59`)
+- `WF21_SUMMARY_WAIT_SECONDS` (default `8`)
+- `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
+- `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
+- `WF21_SUMMARY_RENDER_SCALE` (default `2`)
+- `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
+- `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
+- `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)
 
 Run one-shot locally:
 

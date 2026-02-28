@@ -35,6 +35,10 @@ func NewSystemAccountClient(webhookURL string, timeout time.Duration) *SystemAcc
 }
 
 func (c *SystemAccountClient) SendText(ctx context.Context, content string, format int) error {
+	return c.SendTextWithAtAll(ctx, content, format, false)
+}
+
+func (c *SystemAccountClient) SendTextWithAtAll(ctx context.Context, content string, format int, atAll bool) error {
 	if strings.TrimSpace(content) == "" {
 		return errors.New("content is required")
 	}
@@ -51,6 +55,9 @@ func (c *SystemAccountClient) SendText(ctx context.Context, content string, form
 			"format":  format,
 			"content": content,
 		},
+	}
+	if atAll {
+		payload["at_all"] = true
 	}
 	return c.send(ctx, payload)
 }

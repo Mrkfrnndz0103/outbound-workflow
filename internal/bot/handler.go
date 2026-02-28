@@ -81,7 +81,26 @@ func (s *Server) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	case seatalk.EventTypeNewSubscriber:
 		w.WriteHeader(http.StatusOK)
 		go s.handleNewSubscriberEvent(callback.Event)
+	case seatalk.EventTypeUserEnterChatroomWithBot:
+		w.WriteHeader(http.StatusOK)
+		go s.handleUserEnterChatroomWithBotEvent(callback.Event)
+	case seatalk.EventTypeMentionedMessageFromGroupChat, seatalk.EventTypeMentionedMessageReceivedGroupChat:
+		w.WriteHeader(http.StatusOK)
+		go s.handleMentionedGroupMessageEvent(callback.EventType, callback.Event)
+	case seatalk.EventTypeThreadMessageReceived:
+		w.WriteHeader(http.StatusOK)
+		go s.handleThreadMessageEvent(callback.Event)
+	case seatalk.EventTypeInteractiveMessageClick:
+		w.WriteHeader(http.StatusOK)
+		go s.handleInteractiveMessageClickEvent(callback.Event)
+	case seatalk.EventTypeBotAddedToGroupChat:
+		w.WriteHeader(http.StatusOK)
+		go s.handleBotAddedToGroupChatEvent(callback.Event)
+	case seatalk.EventTypeBotRemovedFromGroupChat:
+		w.WriteHeader(http.StatusOK)
+		go s.handleBotRemovedFromGroupChatEvent(callback.Event)
 	default:
+		s.logger.Printf("ignored callback event_type=%q event_id=%q", callback.EventType, callback.EventID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -135,8 +154,25 @@ func (s *Server) handleNewSubscriberEvent(eventRaw json.RawMessage) {
 		s.logger.Printf("invalid new subscriber event: %v", err)
 		return
 	}
+	s.sendWelcomeMessage(event.EmployeeCode, "new_bot_subscriber")
+}
+
+func (s *Server) handleUserEnterChatroomWithBotEvent(eventRaw json.RawMessage) {
+	var event seatalk.UserEnterChatroomWithBotEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid user enter chatroom event: %v", err)
+		return
+	}
+	s.sendWelcomeMessage(event.EmployeeCode, "user_enter_chatroom_with_bot")
+}
+
+func (s *Server) sendWelcomeMessage(employeeCode string, source string) {
+	if strings.TrimSpace(employeeCode) == "" {
+		s.logger.Printf("skip welcome message source=%s employee_code is empty", source)
+		return
+	}
 	if s.messenger == nil {
-		s.logger.Printf("outbound reply disabled; skip welcome message for employee_code=%s", event.EmployeeCode)
+		s.logger.Printf("outbound reply disabled; skip welcome message source=%s employee_code=%s", source, employeeCode)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -152,9 +188,112 @@ func (s *Server) handleNewSubscriberEvent(eventRaw json.RawMessage) {
 		)
 	}
 
-	if err := s.messenger.SendTextToEmployee(ctx, event.EmployeeCode, message); err != nil {
+	if err := s.messenger.SendTextToEmployee(ctx, employeeCode, message); err != nil {
 		s.logger.Printf("send welcome message failed: %v", err)
 	}
+}
+
+func (s *Server) handleMentionedGroupMessageEvent(eventType string, eventRaw json.RawMessage) {
+	var event seatalk.GroupChatMessageEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid %s event: %v", eventType, err)
+		return
+	}
+	s.logger.Printf(
+		"event=%s group_id=%s thread_id=%s sender=%s message_id=%s tag=%s text=%q",
+		eventType,
+		event.GroupID,
+		event.Message.ThreadID,
+		event.Message.Sender.EmployeeCode,
+		event.Message.MessageID,
+		event.Message.Tag,
+		truncate(groupMessageText(event.Message), 200),
+	)
+}
+
+func (s *Server) handleThreadMessageEvent(eventRaw json.RawMessage) {
+	var event seatalk.GroupChatMessageEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid new_message_received_from_thread event: %v", err)
+		return
+	}
+	s.logger.Printf(
+		"event=new_message_received_from_thread group_id=%s thread_id=%s sender=%s message_id=%s tag=%s text=%q",
+		event.GroupID,
+		event.Message.ThreadID,
+		event.Message.Sender.EmployeeCode,
+		event.Message.MessageID,
+		event.Message.Tag,
+		truncate(groupMessageText(event.Message), 200),
+	)
+}
+
+func (s *Server) handleInteractiveMessageClickEvent(eventRaw json.RawMessage) {
+	var event seatalk.InteractiveMessageClickEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid interactive_message_click event: %v", err)
+		return
+	}
+	actor := firstNonEmpty(
+		strings.TrimSpace(event.Clicker.EmployeeCode),
+		strings.TrimSpace(event.Sender.EmployeeCode),
+	)
+	s.logger.Printf(
+		"event=interactive_message_click group_id=%s actor=%s thread_id=%s message_id=%s",
+		event.GroupID,
+		actor,
+		event.Message.ThreadID,
+		event.Message.MessageID,
+	)
+}
+
+func (s *Server) handleBotAddedToGroupChatEvent(eventRaw json.RawMessage) {
+	var event seatalk.BotAddedToGroupChatEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid bot_added_to_group_chat event: %v", err)
+		return
+	}
+	s.logger.Printf(
+		"event=bot_added_to_group_chat group_id=%s group_name=%q inviter=%s",
+		event.Group.GroupID,
+		event.Group.GroupName,
+		event.Inviter.EmployeeCode,
+	)
+}
+
+func (s *Server) handleBotRemovedFromGroupChatEvent(eventRaw json.RawMessage) {
+	var event seatalk.BotRemovedFromGroupChatEvent
+	if err := json.Unmarshal(eventRaw, &event); err != nil {
+		s.logger.Printf("invalid bot_removed_from_group_chat event: %v", err)
+		return
+	}
+	s.logger.Printf(
+		"event=bot_removed_from_group_chat group_id=%s group_name=%q",
+		event.Group.GroupID,
+		event.Group.GroupName,
+	)
+}
+
+func groupMessageText(message seatalk.GroupChatMessage) string {
+	if strings.TrimSpace(message.Text.PlainText) != "" {
+		return message.Text.PlainText
+	}
+	if strings.TrimSpace(message.Text.Content) != "" {
+		return message.Text.Content
+	}
+	if strings.TrimSpace(message.Markdown.Content) != "" {
+		return message.Markdown.Content
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (s *Server) executeCommand(cmd command) string {

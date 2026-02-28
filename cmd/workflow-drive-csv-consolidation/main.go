@@ -43,6 +43,16 @@ const (
 	defaultPollInterval  = 30 * time.Second
 	defaultSheetsBatch   = 5000
 	defaultR2ObjectPrefx = "wf2-1"
+
+	defaultSummarySheetTab        = "[SOC] Backlogs Summary"
+	defaultSummaryRange           = "B2:Q59"
+	defaultSummaryWaitAfterImport = 8 * time.Second
+	defaultSummaryStabilityWait   = 2 * time.Second
+	defaultSummaryStabilityRuns   = 3
+	defaultSummaryRenderScale     = 2
+	defaultSummaryImageMaxWidthPx = 3000
+	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
+	defaultSummaryHTTPTimeout     = 10 * time.Second
 )
 
 var selectedOutputHeaders = []string{
@@ -87,6 +97,24 @@ type workflowConfig struct {
 
 	EnableHealthServer bool
 	HealthListenAddr   string
+
+	SummarySendEnabled     bool
+	SummarySeaTalkMode     string
+	SummaryWebhookURL      string
+	SummarySeaTalkAppID    string
+	SummarySeaTalkSecret   string
+	SummarySeaTalkBaseURL  string
+	SummarySeaTalkGroupID  string
+	SummarySheetID         string
+	SummaryTab             string
+	SummaryRange           string
+	SummaryWaitAfterImport time.Duration
+	SummaryStabilityWait   time.Duration
+	SummaryStabilityRuns   int
+	SummaryRenderScale     int
+	SummaryImageMaxWidthPx int
+	SummaryImageMaxBase64  int
+	SummarySendHTTPTimeout time.Duration
 }
 
 type workflowState struct {
@@ -115,6 +143,10 @@ type workflowStatus struct {
 	RowsImported      int64  `json:"rows_imported,omitempty"`
 	ObjectKey         string `json:"object_key,omitempty"`
 	ObjectBytes       int64  `json:"object_bytes,omitempty"`
+	SummaryImageSent  bool   `json:"summary_image_sent,omitempty"`
+	SummaryStable     bool   `json:"summary_stable,omitempty"`
+	SummaryImageFmt   string `json:"summary_image_format,omitempty"`
+	SummaryImageBytes int    `json:"summary_image_bytes,omitempty"`
 
 	StateFile  string `json:"state_file"`
 	StatusFile string `json:"status_file,omitempty"`
@@ -135,6 +167,10 @@ type processResult struct {
 	RowsImported      int64
 	ObjectKey         string
 	ObjectBytes       int64
+	SummaryImageSent  bool
+	SummaryStable     bool
+	SummaryImageFmt   string
+	SummaryImageBytes int
 }
 
 type sheetGridState struct {
@@ -190,6 +226,18 @@ func main() {
 		len(selectedOutputHeaders),
 		strings.Join(selectedOutputHeaders, ", "),
 	)
+	if cfg.SummarySendEnabled {
+		logger.Printf(
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s wait_after_import=%s stability_runs=%d stability_wait=%s",
+			cfg.SummarySeaTalkMode,
+			cfg.SummarySheetID,
+			cfg.SummaryTab,
+			cfg.SummaryRange,
+			cfg.SummaryWaitAfterImport,
+			cfg.SummaryStabilityRuns,
+			cfg.SummaryStabilityWait,
+		)
+	}
 
 	cycle := 1
 	logger.Printf("watch mode enabled poll_interval=%s", cfg.PollInterval)
@@ -288,13 +336,14 @@ func runCycle(
 		lastProcessedFile  driveZipFile
 		lastProcessedCycle processResult
 	)
-	for _, file := range pending {
+	for i, file := range pending {
 		zipPath, downloadErr := downloadDriveFileToTemp(ctx, driveSvc, file.ID, cfg.TempDir)
 		if downloadErr != nil {
 			return fmt.Errorf("download zip %s: %w", file.ID, downloadErr)
 		}
 
-		result, processErr := processZipAndImport(ctx, cfg, sheetsSvc, r2Client, file, zipPath)
+		sendSummaryAfterImport := i == len(pending)-1
+		result, processErr := processZipAndImport(ctx, cfg, sheetsSvc, r2Client, file, zipPath, sendSummaryAfterImport)
 		removeErr := os.Remove(zipPath)
 		if processErr != nil {
 			return processErr
@@ -323,7 +372,7 @@ func runCycle(
 		*stateExists = true
 
 		logger.Printf(
-			"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d dry_run=%t",
+			"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d summary_image_sent=%t summary_stable=%t summary_fmt=%q summary_bytes=%d dry_run=%t",
 			file.ID,
 			file.Name,
 			result.CSVFilesProcessed,
@@ -331,6 +380,10 @@ func runCycle(
 			result.RowsImported,
 			result.ObjectKey,
 			result.ObjectBytes,
+			result.SummaryImageSent,
+			result.SummaryStable,
+			result.SummaryImageFmt,
+			result.SummaryImageBytes,
 			cfg.DryRun,
 		)
 	}
@@ -344,6 +397,10 @@ func runCycle(
 	status.RowsImported = totalResult.RowsImported
 	status.ObjectKey = lastProcessedCycle.ObjectKey
 	status.ObjectBytes = lastProcessedCycle.ObjectBytes
+	status.SummaryImageSent = lastProcessedCycle.SummaryImageSent
+	status.SummaryStable = lastProcessedCycle.SummaryStable
+	status.SummaryImageFmt = lastProcessedCycle.SummaryImageFmt
+	status.SummaryImageBytes = lastProcessedCycle.SummaryImageBytes
 	status.Message = fmt.Sprintf("processed %d new zip file(s)", len(pending))
 	writeStatusIfConfigured(cfg.StatusFile, status, logger)
 	return nil
@@ -356,6 +413,7 @@ func processZipAndImport(
 	r2Client *s3.Client,
 	file driveZipFile,
 	zipPath string,
+	sendSummaryAfterImport bool,
 ) (processResult, error) {
 	var result processResult
 
@@ -548,6 +606,17 @@ func processZipAndImport(
 		}
 	}
 
+	if sendSummaryAfterImport && !cfg.DryRun && cfg.SummarySendEnabled {
+		summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
+		if summaryErr != nil {
+			return result, summaryErr
+		}
+		result.SummaryImageSent = true
+		result.SummaryStable = summaryResult.Stable
+		result.SummaryImageFmt = summaryResult.Format
+		result.SummaryImageBytes = summaryResult.RawBytes
+	}
+
 	return result, nil
 }
 
@@ -576,6 +645,14 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	summarySendEnabled, err := getBoolEnv("WF21_SUMMARY_SEND_ENABLED", true)
+	if err != nil {
+		return workflowConfig{}, err
+	}
+	summarySeaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SUMMARY_SEATALK_MODE"),
+		"bot",
+	)))
 
 	credsFile := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_GOOGLE_CREDENTIALS_FILE")),
@@ -606,6 +683,30 @@ func loadConfig() (workflowConfig, error) {
 		strings.TrimSpace(os.Getenv("PORT")),
 		"8080",
 	)
+	summarySeaTalkAppID := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_APP_ID"),
+		os.Getenv("WF2_SEATALK_APP_ID"),
+		os.Getenv("SEATALK_APP_ID"),
+	))
+	summarySeaTalkSecret := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_APP_SECRET"),
+		os.Getenv("WF2_SEATALK_APP_SECRET"),
+		os.Getenv("SEATALK_APP_SECRET"),
+	))
+	summarySeaTalkBaseURL := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_BASE_URL"),
+		os.Getenv("WF2_SEATALK_BASE_URL"),
+		os.Getenv("SEATALK_BASE_URL"),
+		"https://openapi.seatalk.io",
+	))
+	summarySeaTalkGroupID := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_GROUP_ID"),
+		os.Getenv("WF2_SEATALK_GROUP_ID"),
+	))
+	summaryWebhookURL := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_WEBHOOK_URL"),
+		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
+	))
 
 	cfg := workflowConfig{
 		GoogleCredentialsFile:    credsFile,
@@ -629,6 +730,32 @@ func loadConfig() (workflowConfig, error) {
 		StatusFile:               statusFile,
 		EnableHealthServer:       enableHealthServer,
 		HealthListenAddr:         normalizeListenAddr(healthPort),
+		SummarySendEnabled:       summarySendEnabled,
+		SummarySeaTalkMode:       summarySeaTalkMode,
+		SummaryWebhookURL:        summaryWebhookURL,
+		SummarySeaTalkAppID:      summarySeaTalkAppID,
+		SummarySeaTalkSecret:     summarySeaTalkSecret,
+		SummarySeaTalkBaseURL:    summarySeaTalkBaseURL,
+		SummarySeaTalkGroupID:    summarySeaTalkGroupID,
+		SummarySheetID: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_SUMMARY_SHEET_ID")),
+			firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_SHEET_ID")), defaultDestinationSheetID),
+		),
+		SummaryTab: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_SUMMARY_TAB")),
+			defaultSummarySheetTab,
+		),
+		SummaryRange: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_SUMMARY_RANGE")),
+			defaultSummaryRange,
+		),
+		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
+		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
+		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),
+		SummaryRenderScale:     getIntEnv("WF21_SUMMARY_RENDER_SCALE", defaultSummaryRenderScale),
+		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
+		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
+		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
 	}
 
 	if cfg.PollInterval < 5*time.Second {
@@ -636,6 +763,39 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.SheetsBatchSize < 100 {
 		cfg.SheetsBatchSize = 100
+	}
+	switch cfg.SummarySeaTalkMode {
+	case "bot", "webhook":
+	default:
+		return workflowConfig{}, fmt.Errorf("WF21_SUMMARY_SEATALK_MODE must be one of: bot, webhook (got %q)", cfg.SummarySeaTalkMode)
+	}
+	if cfg.SummarySendEnabled && !cfg.DryRun {
+		if cfg.SummarySeaTalkMode == "bot" {
+			if cfg.SummarySeaTalkAppID == "" || cfg.SummarySeaTalkSecret == "" {
+				return workflowConfig{}, errors.New("WF21_SEATALK_APP_ID/WF21_SEATALK_APP_SECRET (or WF2_/SEATALK_ fallbacks) are required when WF21_SUMMARY_SEATALK_MODE=bot")
+			}
+			if cfg.SummarySeaTalkGroupID == "" {
+				return workflowConfig{}, errors.New("WF21_SEATALK_GROUP_ID (or WF2_SEATALK_GROUP_ID fallback) is required when WF21_SUMMARY_SEATALK_MODE=bot")
+			}
+		}
+		if cfg.SummarySeaTalkMode == "webhook" && cfg.SummaryWebhookURL == "" {
+			return workflowConfig{}, errors.New("WF21_SEATALK_WEBHOOK_URL or SEATALK_SYSTEM_WEBHOOK_URL is required when WF21_SUMMARY_SEATALK_MODE=webhook")
+		}
+	}
+	if cfg.SummaryStabilityRuns < 1 {
+		cfg.SummaryStabilityRuns = 1
+	}
+	if cfg.SummaryRenderScale < 1 {
+		cfg.SummaryRenderScale = 1
+	}
+	if cfg.SummaryRenderScale > 4 {
+		cfg.SummaryRenderScale = 4
+	}
+	if cfg.SummaryImageMaxWidthPx < 1200 {
+		cfg.SummaryImageMaxWidthPx = 1200
+	}
+	if cfg.SummaryImageMaxBase64 < 512*1024 {
+		cfg.SummaryImageMaxBase64 = defaultSummaryImageMaxBase64
 	}
 	return cfg, nil
 }

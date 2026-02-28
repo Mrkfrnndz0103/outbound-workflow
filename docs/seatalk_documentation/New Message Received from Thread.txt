@@ -1,0 +1,175 @@
+Event: New Message Received from Thread
+Event Description
+This event is triggered when a new message is posted in a thread where the bot has already been previously mentioned or has sent the root message. It allows bots to follow the thread and respond without requiring repeated mentions. 
+
+Note:
+
+No event callback will be sent if the bot is not online.
+The bot must remain in the group chat and be part of the thread's follower list to continue receiving this event
+
+Messages sent by the bot itself will not trigger this callback.
+ 
+
+Event Parameter
+Header
+
+Parameter
+
+Type
+
+Description
+
+Content-Type
+
+string
+
+Request header format
+
+Signature
+
+string
+
+A signature to ensure that the request is sent by SeaTalk
+
+ 
+
+Body
+
+Parameter
+
+Type
+
+Description
+
+event_id	string	The ID of the event
+event_type	string	
+The type of the event. It will be "new_message_received_from_thread" in this case
+
+timestamp	unit64	The time when this event happened
+app_id	string	The ID of the app to receive the event notification
+event	object	Event-specific information
+  ∟group_id	string	The ID of the group chat which bot has received the mentioned message from.
+  ∟message	object	The message received
+      ∟message_id	string	
+The message ID
+
+Note: For security reasons, a single message will have different message_ids when accessed by different apps.
+
+        ∟quoted_message_id	object	
+Return only when the message has quoted another message. The message ID of the quoted message.
+
+      ∟thread_id	string	
+The ID of the thread. Provided if the message is part of a thread.
+
+      ∟sender	Object	
+ 
+
+          ∟seatalk_id	string	The SeaTalk ID of the message sender (if the sender is a bot, it will be the seatalk_id of the bot)
+          ∟employee_code  	string	
+Return only when the message sender belongs to the same org as bot.
+
+The employee code of the message sender. If the sender is a bot, employee_code will be empty.
+
+          ∟email	string	
+The email of the message sender
+
+     ∟message_sent_time	unit64	The time when the message is sent.
+     ∟tag	string	
+The message type. 
+
+ 
+
+Allowed tags: "text", "combined_forwarded_chat_history", "image", "file", "video"
+
+ 
+
+For more details on supported message types for bots, refer to this document.
+
+     ∟text	Object	
+The text message object
+
+          ∟plain_text	string	
+The text message content
+     ∟image	Object	The image object
+          ∟content	string 	
+The URL of the image. Requires a valid API token to access.
+
+ 
+
+The image message expires in 7 days and cannot be downloaded using the URL subsequently.
+
+     ∟file	Object	The file object
+          ∟content	string 	
+The URL of the file. Requires a valid API token to access.
+
+ 
+
+The file message expires in 7 days and cannot be downloaded using the URL subsequently
+
+          ∟filename	
+string
+
+The file name with extension; files with no extension specified will be sent as unidentified files
+
+     ∟video	Object	The video object
+          ∟content	string 	
+The URL of the video. Requires a valid API token to access.
+
+ 
+
+The video message expires in 7 days and cannot be downloaded using the URL subsequently.
+
+          ∟mentioned_list	object[]	The list of user info of users being mentioned in the message.
+              ∟username	string	User's current username inserted into the plain text content
+              ∟seatalk_id	string	
+Mention specific user: User's SeaTalk ID.
+Mention all: 0
+              ∟employee_code	string	
+Mention specific user: The employee_code of the mentioned user
+Mention specific bot:  Empty 
+Mention all: Empty
+              ∟email	string	
+Mention specific user: The email of the mentioned user
+Mention specific bot:  Empty 
+Mention all: Empty
+ 
+
+Request Body Sample
+
+{
+  "event_id": "1234567",
+  "event_type": "new_message_received_from_thread",
+  "timestamp": 1687764109,
+  "app_id": "abcdefghiklmn",
+  "event": {
+    "group_id": "qwertyui",
+    "message": {
+      "message_id": "kashfefrhnedf",
+      "quoted_message_id": "",
+      "thread_id": "hfaohenbkdaj",
+      "sender": {
+        "seatalk_id": "91234567",
+        "employee_code": "abcdefg"
+        "email": "sample@seatalk.biz"
+      },
+      "message_sent_time": 1687764109,
+      "tag": "text",
+      "text": {
+        "plain_text": "Hello @All, kindly be reminded to complete this @Good Bot",
+        "mentioned_list": [
+          {
+            "username": "",
+            "seatalk_id": "0"
+          },
+          {
+            "username": "Good Bot",
+            "seatalk_id": "1234567"
+            "employee_code": "e_1o38475899"
+            "email": "sample@seatalk.biz"
+ 
+          }
+        ]
+      }
+    }
+  }
+}

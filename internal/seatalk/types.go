@@ -9,9 +9,16 @@ import (
 )
 
 const (
-	EventTypeSingleChat    = "message_from_bot_subscriber"
-	EventTypeNewSubscriber = "new_bot_subscriber"
-	EventTypeVerification  = "event_verification"
+	EventTypeSingleChat                        = "message_from_bot_subscriber"
+	EventTypeNewSubscriber                     = "new_bot_subscriber"
+	EventTypeVerification                      = "event_verification"
+	EventTypeInteractiveMessageClick           = "interactive_message_click"
+	EventTypeBotAddedToGroupChat               = "bot_added_to_group_chat"
+	EventTypeBotRemovedFromGroupChat           = "bot_removed_from_group_chat"
+	EventTypeMentionedMessageFromGroupChat     = "new_mentioned_message_from_group_chat"
+	EventTypeMentionedMessageReceivedGroupChat = "new_mentioned_message_received_from_group_chat"
+	EventTypeThreadMessageReceived             = "new_message_received_from_thread"
+	EventTypeUserEnterChatroomWithBot          = "user_enter_chatroom_with_bot"
 )
 
 type CallbackRequest struct {
@@ -27,12 +34,90 @@ type VerificationEvent struct {
 }
 
 type SingleChatEvent struct {
+	SeatalkID    string      `json:"seatalk_id"`
 	EmployeeCode string      `json:"employee_code"`
+	Email        string      `json:"email"`
 	Message      ChatMessage `json:"message"`
 }
 
 type NewSubscriberEvent struct {
 	EmployeeCode string `json:"employee_code"`
+}
+
+type UserEnterChatroomWithBotEvent struct {
+	SeatalkID    string `json:"seatalk_id"`
+	EmployeeCode string `json:"employee_code"`
+	Email        string `json:"email"`
+}
+
+type GroupChatActor struct {
+	SeatalkID    string `json:"seatalk_id"`
+	EmployeeCode string `json:"employee_code"`
+	Email        string `json:"email"`
+}
+
+type GroupChatInfo struct {
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name"`
+}
+
+type BotAddedToGroupChatEvent struct {
+	Group   GroupChatInfo  `json:"group"`
+	Inviter GroupChatActor `json:"inviter"`
+}
+
+type BotRemovedFromGroupChatEvent struct {
+	Group GroupChatInfo `json:"group"`
+}
+
+type GroupChatMessageEvent struct {
+	GroupID string           `json:"group_id"`
+	Message GroupChatMessage `json:"message"`
+}
+
+type InteractiveMessageClickEvent struct {
+	GroupID string            `json:"group_id"`
+	Message GroupChatMessage  `json:"message"`
+	Clicker GroupChatActor    `json:"clicker"`
+	Sender  GroupChatActor    `json:"sender"`
+	Action  map[string]any    `json:"action"`
+	Extra   map[string]string `json:"extra"`
+}
+
+type GroupChatMessage struct {
+	MessageID       string            `json:"message_id"`
+	QuotedMessageID string            `json:"quoted_message_id"`
+	ThreadID        string            `json:"thread_id"`
+	Sender          GroupChatActor    `json:"sender"`
+	MessageSentTime int64             `json:"message_sent_time"`
+	Tag             string            `json:"tag"`
+	Text            GroupTextContent  `json:"text"`
+	Markdown        GroupTextContent  `json:"markdown"`
+	Image           GroupMediaContent `json:"image"`
+	Video           GroupMediaContent `json:"video"`
+	File            GroupFileContent  `json:"file"`
+}
+
+type GroupMediaContent struct {
+	Content string `json:"content"`
+}
+
+type GroupFileContent struct {
+	Content  string `json:"content"`
+	Filename string `json:"filename"`
+}
+
+type GroupTextContent struct {
+	Content       string           `json:"content"`
+	PlainText     string           `json:"plain_text"`
+	MentionedList []MentionedEntry `json:"mentioned_list"`
+}
+
+type MentionedEntry struct {
+	Username     string `json:"username"`
+	SeatalkID    string `json:"seatalk_id"`
+	EmployeeCode string `json:"employee_code"`
+	Email        string `json:"email"`
 }
 
 type ChatMessage struct {

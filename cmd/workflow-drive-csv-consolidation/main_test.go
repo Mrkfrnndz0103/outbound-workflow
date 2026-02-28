@@ -96,3 +96,29 @@ func TestSelectPendingZipFilesSameTimestampUsesFileIDCursor(t *testing.T) {
 		t.Fatalf("expected zip-c pending, got %#v", pending)
 	}
 }
+
+func TestBuildSheetRangeRefQuotesSpecialTab(t *testing.T) {
+	got := buildSheetRangeRef("[SOC] Backlogs Summary", "B2:Q59")
+	want := "'[SOC] Backlogs Summary'!B2:Q59"
+	if got != want {
+		t.Fatalf("unexpected range ref: got=%q want=%q", got, want)
+	}
+}
+
+func TestBuildSummaryCaption(t *testing.T) {
+	ts := time.Date(2026, 2, 28, 21, 7, 0, 0, time.FixedZone("UTC+8", 8*3600))
+	got := buildSummaryCaption(ts)
+	want := "Outbound Pending for Dispatch as of [9:07 PM Feb-28 (local)]"
+	if got != want {
+		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
+	}
+}
+
+func TestBuildSummaryCaptionForBot(t *testing.T) {
+	ts := time.Date(2026, 2, 28, 21, 7, 0, 0, time.FixedZone("UTC+8", 8*3600))
+	got := buildSummaryCaptionForBot(ts)
+	want := "<mention-tag target=\"seatalk://user?id=0\"/> Outbound Pending for Dispatch as of [9:07 PM Feb-28 (local)]"
+	if got != want {
+		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
+	}
+}
