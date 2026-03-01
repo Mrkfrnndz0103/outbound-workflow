@@ -19,7 +19,7 @@ go run ./scripts/generate_render_env_doc.go
 | --- | --- | --- |
 | `SEATALK_SYSTEM_WEBHOOK_URL` | `sync: false` (unmanaged/secret) | - |
 | `WF1_AT_ALL` | `value` (managed) | `false` |
-| `WF1_BOOTSTRAP_SEND_EXISTING` | `value` (managed) | `false` |
+| `WF1_BOOTSTRAP_SEND_EXISTING` | `value` (managed) | `true` |
 | `WF1_CONTINUOUS` | `value` (managed) | `true` |
 | `WF1_DEBUG_LOG_SKIPS` | `value` (managed) | `false` |
 | `WF1_DRY_RUN` | `value` (managed) | `false` |
