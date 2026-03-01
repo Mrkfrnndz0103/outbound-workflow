@@ -156,6 +156,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		cfg.SummaryRange,
 		cfg.SummaryImageMaxWidthPx,
 		cfg.SummaryRenderScale,
+		cfg.SummaryAutoFitColumns,
 		cfg.SummaryImageMaxBase64,
 		"primary",
 	)
@@ -175,6 +176,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			cfg.SummarySecondRanges,
 			cfg.SummaryImageMaxWidthPx,
 			cfg.SummaryRenderScale,
+			cfg.SummaryAutoFitColumns,
 			cfg.SummaryImageMaxBase64,
 			"secondary",
 		)
@@ -224,6 +226,7 @@ func buildEncodedSummaryImage(
 	captureRange string,
 	maxWidthPx int,
 	renderScale int,
+	autoFitColumns bool,
 	maxBase64Bytes int,
 	label string,
 ) (encodedSummaryImage, error) {
@@ -231,7 +234,7 @@ func buildEncodedSummaryImage(
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
-	pngRaw, err := renderStyledRangeImage(styledRange, maxWidthPx, renderScale)
+	pngRaw, err := renderStyledRangeImage(styledRange, maxWidthPx, renderScale, autoFitColumns)
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
@@ -255,6 +258,7 @@ func buildEncodedConnectedSummaryImage(
 	ranges []string,
 	maxWidthPx int,
 	renderScale int,
+	autoFitColumns bool,
 	maxBase64Bytes int,
 	label string,
 ) (encodedSummaryImage, error) {
@@ -262,7 +266,7 @@ func buildEncodedConnectedSummaryImage(
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
-	pngRaw, err := renderStyledRangeImage(connectedData, maxWidthPx, renderScale)
+	pngRaw, err := renderStyledRangeImage(connectedData, maxWidthPx, renderScale, autoFitColumns)
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
@@ -690,7 +694,7 @@ func parseCellRef(raw string) (col int, row int, err error) {
 	return colVal, rowVal, nil
 }
 
-func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int) ([]byte, error) {
+func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int, autoFitColumns bool) ([]byte, error) {
 	if data.Rows <= 0 || data.Cols <= 0 {
 		return nil, errors.New("empty styled range")
 	}
@@ -708,7 +712,9 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 		}
 		colWidths[c] = maxInt(width*renderScale, 24)
 	}
-	colWidths = autoFitColumnWidths(data, colWidths, mergeMap, renderScale)
+	if autoFitColumns {
+		colWidths = autoFitColumnWidths(data, colWidths, mergeMap, renderScale)
+	}
 	for r := 0; r < data.Rows; r++ {
 		height := 24
 		if r < len(data.RowHeights) && data.RowHeights[r] > 0 {

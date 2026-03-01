@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"google.golang.org/api/googleapi"
 )
 
 func TestNormalizeHeaderRecordDropsLeadingUnnamed(t *testing.T) {
@@ -38,6 +41,58 @@ func TestRowMatchesFilters(t *testing.T) {
 	}
 	if rowMatchesFilters(row, 0, 3) {
 		t.Fatalf("expected row not to match filters")
+	}
+}
+
+func TestShouldImportPendingReceive(t *testing.T) {
+	row := []string{"abc", "pending receive now"}
+	if !shouldImportPendingReceive(row, 1) {
+		t.Fatalf("expected Pending Receive matcher to pass")
+	}
+	if shouldImportPendingReceive(row, 0) {
+		t.Fatalf("expected Pending Receive matcher to fail for wrong index")
+	}
+}
+
+func TestShouldImportPackedInAnotherTORequiresBothTokens(t *testing.T) {
+	rowMatch := []string{"Pack in another TO then Pack in another HandoverTask"}
+	if !shouldImportPackedInAnotherTO(rowMatch, 0) {
+		t.Fatalf("expected packed-in-another matcher to pass when both tokens are present")
+	}
+
+	rowMissing := []string{"Pack in another TO only"}
+	if shouldImportPackedInAnotherTO(rowMissing, 0) {
+		t.Fatalf("expected packed-in-another matcher to fail when one token is missing")
+	}
+}
+
+func TestShouldImportNoLHPacking(t *testing.T) {
+	row := []string{"x", "Receive in staging area"}
+	if !shouldImportNoLHPacking(row, 1) {
+		t.Fatalf("expected no-lhpacking matcher to pass")
+	}
+	if shouldImportNoLHPacking(row, 0) {
+		t.Fatalf("expected no-lhpacking matcher to fail for wrong index")
+	}
+}
+
+func TestIsRetryableSheetsWriteError(t *testing.T) {
+	if !isRetryableSheetsWriteError(&googleapi.Error{Code: 429}) {
+		t.Fatalf("expected 429 to be retryable")
+	}
+	if !isRetryableSheetsWriteError(&googleapi.Error{
+		Code: 400,
+		Errors: []googleapi.ErrorItem{
+			{Reason: "rateLimitExceeded"},
+		},
+	}) {
+		t.Fatalf("expected rateLimitExceeded reason to be retryable")
+	}
+	if isRetryableSheetsWriteError(&googleapi.Error{Code: 400}) {
+		t.Fatalf("expected generic 400 not to be retryable")
+	}
+	if isRetryableSheetsWriteError(errors.New("validation failed")) {
+		t.Fatalf("expected validation error not to be retryable")
 	}
 }
 

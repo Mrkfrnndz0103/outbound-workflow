@@ -17,23 +17,27 @@ go run ./cmd/workflow-drive-csv-consolidation
    - Aligns subsequent CSV rows by header name.
    - Optionally drops hidden/unnamed leading column (default enabled).
 4. Uploads the consolidated CSV to Cloudflare R2.
-5. Writes filtered rows to destination columns `A:K` only (does not clear `L+`).
+5. Writes matched rows to destination columns `A:K` only (does not clear `L+`) across three tabs.
 6. After import, waits for update propagation, captures `[SOC] Backlogs Summary!B2:Q59` as a styled image, then sends it to SeaTalk group via system account webhook.
 
 ## Default source/destination
 
 - Drive parent folder ID: `1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ`
 - Destination sheet ID: `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA`
-- Destination tab: `generated_file`
+- Destination tabs:
+  - `pending_rcv` (`Receive Status` contains `Pending Receive`)
+  - `packed_in_another_to` (`Remark` contains both `Pack in another TO` and `Pack in another HandoverTask`)
+  - `no_lhpacking` (`Remark` contains `Receive in`)
 
 ## Filter and output rules
 
 Source file columns: `A:AH` (header row in row 1).
 
-Filter conditions:
+Import conditions:
 
-- `Current Station` = `SOC 5`
-- `Receiver Type` = `Station`
+- `pending_rcv`: `Receive Status` contains `Pending Receive`
+- `packed_in_another_to`: `Remark` contains both `Pack in another TO` and `Pack in another HandoverTask`
+- `no_lhpacking`: `Remark` contains `Receive in`
 
 Imported output columns (in order):
 
@@ -54,7 +58,7 @@ Imported output columns (in order):
 - Zip is downloaded to temp file (disk), not memory.
 - CSV rows are streamed file-by-file.
 - Consolidated CSV is streamed to temp output file.
-- Google Sheet writes are chunked in batches (`WF21_SHEETS_BATCH_SIZE`, default `5000`).
+- Google Sheet writes are chunked in batches (`WF21_SHEETS_BATCH_SIZE`, default `7000`).
 - State file tracks the processed cursor and prevents reprocessing already handled zips.
 
 ## Required environment variables
@@ -84,7 +88,9 @@ Imported output columns (in order):
 
 - `WF21_DRIVE_PARENT_FOLDER_ID`
 - `WF21_DESTINATION_SHEET_ID`
-- `WF21_DESTINATION_TAB`
+- `WF21_DESTINATION_TAB_PENDING_RCV` (default `pending_rcv`)
+- `WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO` (default `packed_in_another_to`)
+- `WF21_DESTINATION_TAB_NO_LHPACKING` (default `no_lhpacking`)
 - `WF21_R2_OBJECT_PREFIX` (default `wf2-1`)
 - `WF21_STATE_FILE` (default `data/workflow2-1-drive-csv-consolidation-state.json`)
 - `WF21_STATUS_FILE` (default `data/workflow2-1-drive-csv-consolidation-status.json`, set `none` to disable)
@@ -95,7 +101,10 @@ Imported output columns (in order):
 - `WF21_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF21_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF21_POLL_INTERVAL_SECONDS` (default `30`)
-- `WF21_SHEETS_BATCH_SIZE` (default `5000`)
+- `WF21_SHEETS_BATCH_SIZE` (default `7000`)
+- `WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS` (default `6`)
+- `WF21_SHEETS_WRITE_RETRY_BASE_MS` (default `1000`)
+- `WF21_SHEETS_WRITE_RETRY_MAX_MS` (default `15000`)
 - `WF21_TEMP_DIR` (optional temp directory override)
 - `WF21_SUMMARY_SEND_ENABLED` (default `true`)
 - `WF21_SUMMARY_SEATALK_MODE` (default `bot`)
@@ -110,6 +119,7 @@ Imported output columns (in order):
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
 - `WF21_SUMMARY_RENDER_SCALE` (default `2`)
+- `WF21_SUMMARY_AUTO_FIT_COLUMNS` (default `false`; set `false` to preserve sheet layout, `true` to auto-resize columns for long text)
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)

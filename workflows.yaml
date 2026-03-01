@@ -16,7 +16,8 @@ workflows:
     timeout_seconds: 900
     allow_extra_args: false
     env:
-      WF21_CONTINUOUS: "false"
+      WF21_CONTINUOUS: "true"
+      WF21_POLL_INTERVAL_SECONDS: "30"
 
   ping:
     command: cmd

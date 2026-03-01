@@ -301,17 +301,17 @@ go run ./cmd/workflow-ob-pending-dispatch
 3. Keeps only the first CSV header as canonical header and aligns subsequent rows by header name.
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
-6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports filtered rows in batches (lightweight for large datasets).
+6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports matched rows into three tabs in batches (lightweight for large datasets).
 7. After import, waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group via system account webhook.
 
 Defaults:
 
 - Drive parent folder: `1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ`
 - Destination sheet: `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA`
-- Destination tab: `generated_file`
-- Filter:
-  - `Current Station` = `SOC 5`
-  - `Receiver Type` = `Station`
+- Destination tabs:
+  - `pending_rcv` (when `Receive Status` contains `Pending Receive`)
+  - `packed_in_another_to` (when `Remark` contains both `Pack in another TO` and `Pack in another HandoverTask`)
+  - `no_lhpacking` (when `Remark` contains `Receive in`)
 - Output columns:
   - `TO Number`, `SPX Tracking Number`, `Receiver Name`, `TO Order Quantity`, `TO Number`, `Operator`, `Create Time`, `Complete Time`, `Remark`, `Receive Status`, `Staging Area ID`
 
@@ -332,7 +332,9 @@ Optional env:
 
 - `WF21_DRIVE_PARENT_FOLDER_ID`
 - `WF21_DESTINATION_SHEET_ID`
-- `WF21_DESTINATION_TAB`
+- `WF21_DESTINATION_TAB_PENDING_RCV` (default `pending_rcv`)
+- `WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO` (default `packed_in_another_to`)
+- `WF21_DESTINATION_TAB_NO_LHPACKING` (default `no_lhpacking`)
 - `WF21_R2_OBJECT_PREFIX` (default `wf2-1`)
 - `WF21_STATE_FILE`
 - `WF21_STATUS_FILE` (set `none` to disable)
@@ -343,7 +345,10 @@ Optional env:
 - `WF21_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF21_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF21_POLL_INTERVAL_SECONDS` (default `30`)
-- `WF21_SHEETS_BATCH_SIZE` (default `5000`)
+- `WF21_SHEETS_BATCH_SIZE` (default `7000`)
+- `WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS` (default `6`)
+- `WF21_SHEETS_WRITE_RETRY_BASE_MS` (default `1000`)
+- `WF21_SHEETS_WRITE_RETRY_MAX_MS` (default `15000`)
 - `WF21_TEMP_DIR` (optional)
 - `WF21_SUMMARY_SEND_ENABLED` (default `true`)
 - `WF21_SUMMARY_SEATALK_MODE` (default `bot`)
@@ -361,6 +366,7 @@ Optional env:
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
 - `WF21_SUMMARY_RENDER_SCALE` (default `2`)
+- `WF21_SUMMARY_AUTO_FIT_COLUMNS` (default `false`; set `false` to preserve sheet layout, `true` to auto-resize columns for long text)
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)

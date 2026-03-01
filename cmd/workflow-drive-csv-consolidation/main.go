@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/joho/godotenv"
 	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -33,16 +35,21 @@ import (
 const (
 	workflowName = "workflow_2_1_drive_csv_consolidation"
 
-	defaultDriveParentFolderID = "1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ"
-	defaultDestinationSheetID  = "1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA"
-	defaultDestinationTab      = "generated_file"
+	defaultDriveParentFolderID           = "1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ"
+	defaultDestinationSheetID            = "1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA"
+	defaultDestinationTabPendingRCV      = "pending_rcv"
+	defaultDestinationTabPackedAnotherTO = "packed_in_another_to"
+	defaultDestinationTabNoLHPacking     = "no_lhpacking"
 
 	defaultStateFile  = "data/workflow2-1-drive-csv-consolidation-state.json"
 	defaultStatusFile = "data/workflow2-1-drive-csv-consolidation-status.json"
 
-	defaultPollInterval  = 30 * time.Second
-	defaultSheetsBatch   = 5000
-	defaultR2ObjectPrefx = "wf2-1"
+	defaultPollInterval                = 30 * time.Second
+	defaultSheetsBatch                 = 7000
+	defaultR2ObjectPrefx               = "wf2-1"
+	defaultSheetsWriteRetryMaxAttempts = 6
+	defaultSheetsWriteRetryBaseDelay   = 1 * time.Second
+	defaultSheetsWriteRetryMaxDelay    = 15 * time.Second
 
 	defaultSummarySheetTab        = "[SOC] Backlogs Summary"
 	defaultSummaryRange           = "B2:Q59"
@@ -52,6 +59,7 @@ const (
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
 	defaultSummaryRenderScale     = 2
+	defaultSummaryAutoFitColumns  = false
 	defaultSummaryImageMaxWidthPx = 3000
 	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
 	defaultSummaryHTTPTimeout     = 10 * time.Second
@@ -78,8 +86,10 @@ type workflowConfig struct {
 
 	DriveParentFolderID string
 
-	DestinationSheetID string
-	DestinationTab     string
+	DestinationSheetID            string
+	DestinationTabPendingRCV      string
+	DestinationTabPackedAnotherTO string
+	DestinationTabNoLHPacking     string
 
 	R2AccountID       string
 	R2Bucket          string
@@ -87,13 +97,16 @@ type workflowConfig struct {
 	R2SecretAccessKey string
 	R2ObjectPrefix    string
 
-	Continuous               bool
-	PollInterval             time.Duration
-	DryRun                   bool
-	BootstrapProcessExisting bool
-	DropLeadingUnnamedColumn bool
-	SheetsBatchSize          int
-	TempDir                  string
+	Continuous                  bool
+	PollInterval                time.Duration
+	DryRun                      bool
+	BootstrapProcessExisting    bool
+	DropLeadingUnnamedColumn    bool
+	SheetsBatchSize             int
+	SheetsWriteRetryMaxAttempts int
+	SheetsWriteRetryBaseDelay   time.Duration
+	SheetsWriteRetryMaxDelay    time.Duration
+	TempDir                     string
 
 	StateFile  string
 	StatusFile string
@@ -118,6 +131,7 @@ type workflowConfig struct {
 	SummaryStabilityWait   time.Duration
 	SummaryStabilityRuns   int
 	SummaryRenderScale     int
+	SummaryAutoFitColumns  bool
 	SummaryImageMaxWidthPx int
 	SummaryImageMaxBase64  int
 	SummarySendHTTPTimeout time.Duration
@@ -188,6 +202,13 @@ type sheetGridState struct {
 	loaded  bool
 }
 
+type destinationImportTabState struct {
+	Name         string
+	NextSheetRow int
+	PendingRows  [][]string
+	GridState    sheetGridState
+}
+
 func main() {
 	logger := log.New(os.Stdout, "[workflow-drive-csv-consolidation] ", log.LstdFlags|log.Lmsgprefix)
 
@@ -227,16 +248,18 @@ func main() {
 
 	outputEndCol := columnNameFromIndex(len(selectedOutputHeaders))
 	logger.Printf(
-		"destination write target sheet=%s tab=%s range=A:%s columns=%d headers=%q",
+		"destination write targets sheet=%s tabs=%q,%q,%q range=A:%s columns=%d headers=%q",
 		cfg.DestinationSheetID,
-		cfg.DestinationTab,
+		cfg.DestinationTabPendingRCV,
+		cfg.DestinationTabPackedAnotherTO,
+		cfg.DestinationTabNoLHPacking,
 		outputEndCol,
 		len(selectedOutputHeaders),
 		strings.Join(selectedOutputHeaders, ", "),
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_scale=%d auto_fit_columns=%t timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -247,6 +270,8 @@ func main() {
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
+			cfg.SummaryRenderScale,
+			cfg.SummaryAutoFitColumns,
 			cfg.SummaryTimezone,
 		)
 	}
@@ -479,21 +504,38 @@ func processZipAndImport(
 	for i := range selectorIndexes {
 		selectorIndexes[i] = -1
 	}
-	filterCurrentStationIdx := -1
-	filterReceiverTypeIdx := -1
-	nextSheetRow := 2
-	pendingSheetRows := make([][]string, 0, cfg.SheetsBatchSize)
-	var gridState sheetGridState
+	remarkIdx := -1
+	receiveStatusIdx := -1
+	importTabStates := []destinationImportTabState{
+		{
+			Name:         cfg.DestinationTabPendingRCV,
+			NextSheetRow: 2,
+			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+		},
+		{
+			Name:         cfg.DestinationTabPackedAnotherTO,
+			NextSheetRow: 2,
+			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+		},
+		{
+			Name:         cfg.DestinationTabNoLHPacking,
+			NextSheetRow: 2,
+			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+		},
+	}
 
 	if !cfg.DryRun {
-		if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, &gridState); err != nil {
-			return result, err
-		}
-		if err = clearDestinationSheet(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab); err != nil {
-			return result, err
-		}
-		if err = writeHeaderRow(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, selectedOutputHeaders); err != nil {
-			return result, err
+		for i := range importTabStates {
+			tabState := &importTabStates[i]
+			if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, tabState.Name, &tabState.GridState); err != nil {
+				return result, err
+			}
+			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name); err != nil {
+				return result, err
+			}
+			if err = writeHeaderRow(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name, selectedOutputHeaders); err != nil {
+				return result, err
+			}
 		}
 	}
 
@@ -525,8 +567,16 @@ func processZipAndImport(
 			canonicalHeader = append([]string(nil), header...)
 			canonicalHeaderMap = buildHeaderMap(canonicalHeader)
 
-			filterCurrentStationIdx = findIndexByHeader(canonicalHeaderMap, "Current Station", 12, len(canonicalHeader))
-			filterReceiverTypeIdx = findIndexByHeader(canonicalHeaderMap, "Receiver Type", 10, len(canonicalHeader))
+			remarkIdx = findIndexByHeader(canonicalHeaderMap, "Remark", -1, len(canonicalHeader))
+			receiveStatusIdx = findIndexByHeader(canonicalHeaderMap, "Receive Status", -1, len(canonicalHeader))
+			if remarkIdx < 0 {
+				entryReader.Close()
+				return result, errors.New(`required column "Remark" not found in canonical CSV header`)
+			}
+			if receiveStatusIdx < 0 {
+				entryReader.Close()
+				return result, errors.New(`required column "Receive Status" not found in canonical CSV header`)
+			}
 
 			for i, name := range selectedOutputHeaders {
 				if idx, ok := canonicalHeaderMap[normalizeHeaderKey(name)]; ok {
@@ -559,18 +609,44 @@ func processZipAndImport(
 			}
 			result.RowsConsolidated++
 
-			if rowMatchesFilters(canonicalRow, filterReceiverTypeIdx, filterCurrentStationIdx) {
-				result.RowsImported++
+			pendingReceive := shouldImportPendingReceive(canonicalRow, receiveStatusIdx)
+			packedInAnotherTO := shouldImportPackedInAnotherTO(canonicalRow, remarkIdx)
+			noLHPacking := shouldImportNoLHPacking(canonicalRow, remarkIdx)
+
+			if pendingReceive || packedInAnotherTO || noLHPacking {
 				picked := pickColumns(canonicalRow, selectorIndexes)
-				if !cfg.DryRun {
-					pendingSheetRows = append(pendingSheetRows, picked)
-					if len(pendingSheetRows) >= cfg.SheetsBatchSize {
-						if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows, &gridState); err != nil {
-							entryReader.Close()
-							return result, err
+				needsFlush := false
+				if pendingReceive {
+					result.RowsImported++
+					if !cfg.DryRun {
+						importTabStates[0].PendingRows = append(importTabStates[0].PendingRows, picked)
+						if len(importTabStates[0].PendingRows) >= cfg.SheetsBatchSize {
+							needsFlush = true
 						}
-						nextSheetRow += len(pendingSheetRows)
-						pendingSheetRows = pendingSheetRows[:0]
+					}
+				}
+				if packedInAnotherTO {
+					result.RowsImported++
+					if !cfg.DryRun {
+						importTabStates[1].PendingRows = append(importTabStates[1].PendingRows, picked)
+						if len(importTabStates[1].PendingRows) >= cfg.SheetsBatchSize {
+							needsFlush = true
+						}
+					}
+				}
+				if noLHPacking {
+					result.RowsImported++
+					if !cfg.DryRun {
+						importTabStates[2].PendingRows = append(importTabStates[2].PendingRows, picked)
+						if len(importTabStates[2].PendingRows) >= cfg.SheetsBatchSize {
+							needsFlush = true
+						}
+					}
+				}
+				if !cfg.DryRun && needsFlush {
+					if err = flushDestinationTabsRows(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, importTabStates); err != nil {
+						entryReader.Close()
+						return result, err
 					}
 				}
 			}
@@ -594,8 +670,8 @@ func processZipAndImport(
 		return result, err
 	}
 
-	if !cfg.DryRun && len(pendingSheetRows) > 0 {
-		if err = writeRowsBatch(ctx, sheetsSvc, cfg.DestinationSheetID, cfg.DestinationTab, nextSheetRow, pendingSheetRows, &gridState); err != nil {
+	if !cfg.DryRun {
+		if err = flushDestinationTabsRows(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, importTabStates); err != nil {
 			return result, err
 		}
 	}
@@ -662,6 +738,10 @@ func loadConfig() (workflowConfig, error) {
 		return workflowConfig{}, err
 	}
 	summarySecondEnabled, err := getBoolEnv("WF21_SUMMARY_SECOND_IMAGE_ENABLED", true)
+	if err != nil {
+		return workflowConfig{}, err
+	}
+	summaryAutoFitColumns, err := getBoolEnv("WF21_SUMMARY_AUTO_FIT_COLUMNS", defaultSummaryAutoFitColumns)
 	if err != nil {
 		return workflowConfig{}, err
 	}
@@ -745,34 +825,48 @@ func loadConfig() (workflowConfig, error) {
 	}
 
 	cfg := workflowConfig{
-		GoogleCredentialsFile:    credsFile,
-		GoogleCredentialsJSON:    credsJSON,
-		DriveParentFolderID:      firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DRIVE_PARENT_FOLDER_ID")), defaultDriveParentFolderID),
-		DestinationSheetID:       firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_SHEET_ID")), defaultDestinationSheetID),
-		DestinationTab:           firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_TAB")), defaultDestinationTab),
-		R2AccountID:              r2AccountID,
-		R2Bucket:                 r2Bucket,
-		R2AccessKeyID:            r2AccessKeyID,
-		R2SecretAccessKey:        r2SecretAccessKey,
-		R2ObjectPrefix:           firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_R2_OBJECT_PREFIX")), defaultR2ObjectPrefx),
-		Continuous:               continuous,
-		PollInterval:             getDurationSeconds("WF21_POLL_INTERVAL_SECONDS", int(defaultPollInterval/time.Second)),
-		DryRun:                   dryRun,
-		BootstrapProcessExisting: bootstrapProcessExisting,
-		DropLeadingUnnamedColumn: dropLeadingUnnamed,
-		SheetsBatchSize:          getIntEnv("WF21_SHEETS_BATCH_SIZE", defaultSheetsBatch),
-		TempDir:                  strings.TrimSpace(os.Getenv("WF21_TEMP_DIR")),
-		StateFile:                firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_STATE_FILE")), defaultStateFile),
-		StatusFile:               statusFile,
-		EnableHealthServer:       enableHealthServer,
-		HealthListenAddr:         normalizeListenAddr(healthPort),
-		SummarySendEnabled:       summarySendEnabled,
-		SummarySeaTalkMode:       summarySeaTalkMode,
-		SummaryWebhookURL:        summaryWebhookURL,
-		SummarySeaTalkAppID:      summarySeaTalkAppID,
-		SummarySeaTalkSecret:     summarySeaTalkSecret,
-		SummarySeaTalkBaseURL:    summarySeaTalkBaseURL,
-		SummarySeaTalkGroupID:    summarySeaTalkGroupID,
+		GoogleCredentialsFile: credsFile,
+		GoogleCredentialsJSON: credsJSON,
+		DriveParentFolderID:   firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DRIVE_PARENT_FOLDER_ID")), defaultDriveParentFolderID),
+		DestinationSheetID:    firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_SHEET_ID")), defaultDestinationSheetID),
+		DestinationTabPendingRCV: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_DESTINATION_TAB_PENDING_RCV")),
+			defaultDestinationTabPendingRCV,
+		),
+		DestinationTabPackedAnotherTO: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO")),
+			defaultDestinationTabPackedAnotherTO,
+		),
+		DestinationTabNoLHPacking: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_DESTINATION_TAB_NO_LHPACKING")),
+			defaultDestinationTabNoLHPacking,
+		),
+		R2AccountID:                 r2AccountID,
+		R2Bucket:                    r2Bucket,
+		R2AccessKeyID:               r2AccessKeyID,
+		R2SecretAccessKey:           r2SecretAccessKey,
+		R2ObjectPrefix:              firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_R2_OBJECT_PREFIX")), defaultR2ObjectPrefx),
+		Continuous:                  continuous,
+		PollInterval:                getDurationSeconds("WF21_POLL_INTERVAL_SECONDS", int(defaultPollInterval/time.Second)),
+		DryRun:                      dryRun,
+		BootstrapProcessExisting:    bootstrapProcessExisting,
+		DropLeadingUnnamedColumn:    dropLeadingUnnamed,
+		SheetsBatchSize:             getIntEnv("WF21_SHEETS_BATCH_SIZE", defaultSheetsBatch),
+		SheetsWriteRetryMaxAttempts: getIntEnv("WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS", defaultSheetsWriteRetryMaxAttempts),
+		SheetsWriteRetryBaseDelay:   getDurationMillis("WF21_SHEETS_WRITE_RETRY_BASE_MS", int(defaultSheetsWriteRetryBaseDelay/time.Millisecond)),
+		SheetsWriteRetryMaxDelay:    getDurationMillis("WF21_SHEETS_WRITE_RETRY_MAX_MS", int(defaultSheetsWriteRetryMaxDelay/time.Millisecond)),
+		TempDir:                     strings.TrimSpace(os.Getenv("WF21_TEMP_DIR")),
+		StateFile:                   firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_STATE_FILE")), defaultStateFile),
+		StatusFile:                  statusFile,
+		EnableHealthServer:          enableHealthServer,
+		HealthListenAddr:            normalizeListenAddr(healthPort),
+		SummarySendEnabled:          summarySendEnabled,
+		SummarySeaTalkMode:          summarySeaTalkMode,
+		SummaryWebhookURL:           summaryWebhookURL,
+		SummarySeaTalkAppID:         summarySeaTalkAppID,
+		SummarySeaTalkSecret:        summarySeaTalkSecret,
+		SummarySeaTalkBaseURL:       summarySeaTalkBaseURL,
+		SummarySeaTalkGroupID:       summarySeaTalkGroupID,
 		SummarySheetID: firstNonEmpty(
 			strings.TrimSpace(os.Getenv("WF21_SUMMARY_SHEET_ID")),
 			firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_SHEET_ID")), defaultDestinationSheetID),
@@ -792,6 +886,7 @@ func loadConfig() (workflowConfig, error) {
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
 		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),
 		SummaryRenderScale:     getIntEnv("WF21_SUMMARY_RENDER_SCALE", defaultSummaryRenderScale),
+		SummaryAutoFitColumns:  summaryAutoFitColumns,
 		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
 		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
@@ -804,6 +899,35 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.SheetsBatchSize < 100 {
 		cfg.SheetsBatchSize = 100
+	}
+	if cfg.SheetsWriteRetryMaxAttempts < 1 {
+		cfg.SheetsWriteRetryMaxAttempts = 1
+	}
+	if cfg.SheetsWriteRetryMaxAttempts > 10 {
+		cfg.SheetsWriteRetryMaxAttempts = 10
+	}
+	if cfg.SheetsWriteRetryBaseDelay < 100*time.Millisecond {
+		cfg.SheetsWriteRetryBaseDelay = 100 * time.Millisecond
+	}
+	if cfg.SheetsWriteRetryMaxDelay < cfg.SheetsWriteRetryBaseDelay {
+		cfg.SheetsWriteRetryMaxDelay = cfg.SheetsWriteRetryBaseDelay
+	}
+	if cfg.SheetsWriteRetryMaxDelay > 60*time.Second {
+		cfg.SheetsWriteRetryMaxDelay = 60 * time.Second
+	}
+	if strings.TrimSpace(cfg.DestinationTabPendingRCV) == "" {
+		return workflowConfig{}, errors.New("WF21_DESTINATION_TAB_PENDING_RCV is required")
+	}
+	if strings.TrimSpace(cfg.DestinationTabPackedAnotherTO) == "" {
+		return workflowConfig{}, errors.New("WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO is required")
+	}
+	if strings.TrimSpace(cfg.DestinationTabNoLHPacking) == "" {
+		return workflowConfig{}, errors.New("WF21_DESTINATION_TAB_NO_LHPACKING is required")
+	}
+	if strings.EqualFold(cfg.DestinationTabPendingRCV, cfg.DestinationTabPackedAnotherTO) ||
+		strings.EqualFold(cfg.DestinationTabPendingRCV, cfg.DestinationTabNoLHPacking) ||
+		strings.EqualFold(cfg.DestinationTabPackedAnotherTO, cfg.DestinationTabNoLHPacking) {
+		return workflowConfig{}, errors.New("WF21 destination tab names must be unique across pending_rcv/packed_in_another_to/no_lhpacking")
 	}
 	switch cfg.SummarySeaTalkMode {
 	case "bot", "webhook":
@@ -998,16 +1122,19 @@ func downloadDriveFileToTemp(ctx context.Context, driveSvc *drive.Service, fileI
 	return tempFile.Name(), nil
 }
 
-func clearDestinationSheet(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) error {
+func clearDestinationSheet(ctx context.Context, sheetsSvc *sheets.Service, cfg workflowConfig, sheetID, tab string) error {
 	endCol := columnNameFromIndex(len(selectedOutputHeaders))
-	_, err := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:%s", tab, endCol), &sheets.ClearValuesRequest{}).Context(ctx).Do()
+	err := runSheetsWriteWithRetry(ctx, cfg, "clear_destination_sheet", func() error {
+		_, clearErr := sheetsSvc.Spreadsheets.Values.Clear(sheetID, fmt.Sprintf("%s!A:%s", tab, endCol), &sheets.ClearValuesRequest{}).Context(ctx).Do()
+		return clearErr
+	})
 	if err != nil {
 		return fmt.Errorf("clear destination sheet: %w", err)
 	}
 	return nil
 }
 
-func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string, headers []string) error {
+func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, cfg workflowConfig, sheetID, tab string, headers []string) error {
 	values := []interface{}{}
 	for _, h := range headers {
 		values = append(values, h)
@@ -1017,50 +1144,164 @@ func writeHeaderRow(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 	}
 	endCol := columnNameFromIndex(len(headers))
 	targetRange := fmt.Sprintf("%s!A1:%s1", tab, endCol)
-	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
-		ValueInputOption("RAW").
-		Context(ctx).
-		Do()
+	err := runSheetsWriteWithRetry(ctx, cfg, "write_header_row", func() error {
+		_, updateErr := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
+			ValueInputOption("RAW").
+			Context(ctx).
+			Do()
+		return updateErr
+	})
 	if err != nil {
 		return fmt.Errorf("write header row range=%s headers=%d: %w", targetRange, len(headers), err)
 	}
 	return nil
 }
 
-func writeRowsBatch(
+func flushDestinationTabsRows(
 	ctx context.Context,
 	sheetsSvc *sheets.Service,
-	sheetID, tab string,
-	startRow int,
-	rows [][]string,
-	gridState *sheetGridState,
+	cfg workflowConfig,
+	sheetID string,
+	tabStates []destinationImportTabState,
 ) error {
-	if len(rows) == 0 {
+	if len(tabStates) == 0 {
 		return nil
 	}
-	payload := make([][]interface{}, 0, len(rows))
-	for _, row := range rows {
-		items := make([]interface{}, 0, len(row))
-		for _, val := range row {
-			items = append(items, val)
-		}
-		payload = append(payload, items)
-	}
-	endRow := startRow + len(rows) - 1
-	if err := ensureSheetGridCapacity(ctx, sheetsSvc, sheetID, tab, endRow, len(selectedOutputHeaders), gridState); err != nil {
-		return err
-	}
+
 	endCol := columnNameFromIndex(len(selectedOutputHeaders))
-	targetRange := fmt.Sprintf("%s!A%d:%s%d", tab, startRow, endCol, endRow)
-	vr := &sheets.ValueRange{Values: payload}
-	_, err := sheetsSvc.Spreadsheets.Values.Update(sheetID, targetRange, vr).
-		ValueInputOption("RAW").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return fmt.Errorf("write rows batch [%d..%d]: %w", startRow, endRow, err)
+	pendingIndexes := make([]int, 0, len(tabStates))
+	data := make([]*sheets.ValueRange, 0, len(tabStates))
+
+	for idx := range tabStates {
+		tabState := &tabStates[idx]
+		if len(tabState.PendingRows) == 0 {
+			continue
+		}
+
+		endRow := tabState.NextSheetRow + len(tabState.PendingRows) - 1
+		if err := ensureSheetGridCapacity(
+			ctx,
+			sheetsSvc,
+			cfg,
+			sheetID,
+			tabState.Name,
+			endRow,
+			len(selectedOutputHeaders),
+			&tabState.GridState,
+		); err != nil {
+			return err
+		}
+
+		payload := make([][]interface{}, 0, len(tabState.PendingRows))
+		for _, row := range tabState.PendingRows {
+			items := make([]interface{}, 0, len(row))
+			for _, val := range row {
+				items = append(items, val)
+			}
+			payload = append(payload, items)
+		}
+
+		targetRange := fmt.Sprintf("%s!A%d:%s%d", tabState.Name, tabState.NextSheetRow, endCol, endRow)
+		data = append(data, &sheets.ValueRange{
+			Range:  targetRange,
+			Values: payload,
+		})
+		pendingIndexes = append(pendingIndexes, idx)
+	}
+
+	if len(data) == 0 {
+		return nil
+	}
+
+	req := &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             data,
+	}
+	if err := runSheetsWriteWithRetry(ctx, cfg, "write_rows_batch_update", func() error {
+		_, updateErr := sheetsSvc.Spreadsheets.Values.BatchUpdate(sheetID, req).Context(ctx).Do()
+		return updateErr
+	}); err != nil {
+		return fmt.Errorf("write rows batch update ranges=%d: %w", len(data), err)
+	}
+
+	for _, idx := range pendingIndexes {
+		tabState := &tabStates[idx]
+		tabState.NextSheetRow += len(tabState.PendingRows)
+		tabState.PendingRows = tabState.PendingRows[:0]
 	}
 	return nil
+}
+
+func runSheetsWriteWithRetry(ctx context.Context, cfg workflowConfig, opName string, op func() error) error {
+	attempts := maxInt(cfg.SheetsWriteRetryMaxAttempts, 1)
+	delay := cfg.SheetsWriteRetryBaseDelay
+	maxDelay := cfg.SheetsWriteRetryMaxDelay
+	if delay <= 0 {
+		delay = defaultSheetsWriteRetryBaseDelay
+	}
+	if maxDelay < delay {
+		maxDelay = delay
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := op(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if !isRetryableSheetsWriteError(lastErr) || attempt == attempts {
+			break
+		}
+
+		wait := delay
+		if wait > maxDelay {
+			wait = maxDelay
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s canceled while waiting for retry: %w", opName, ctx.Err())
+		case <-time.After(wait):
+		}
+
+		delay = delay * 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+	return fmt.Errorf("%s failed after %d attempt(s): %w", opName, attempts, lastErr)
+}
+
+func isRetryableSheetsWriteError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var gErr *googleapi.Error
+	if errors.As(err, &gErr) {
+		switch gErr.Code {
+		case 429, 500, 502, 503, 504:
+			return true
+		}
+		for _, item := range gErr.Errors {
+			reason := strings.ToLower(strings.TrimSpace(item.Reason))
+			switch reason {
+			case "ratelimitexceeded", "userratelimitexceeded", "backenderror", "internalerror":
+				return true
+			}
+		}
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "temporarily unavailable") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe")
 }
 
 func loadSheetGridState(ctx context.Context, sheetsSvc *sheets.Service, spreadsheetID, tab string, state *sheetGridState) error {
@@ -1105,6 +1346,7 @@ func loadSheetGridState(ctx context.Context, sheetsSvc *sheets.Service, spreadsh
 func ensureSheetGridCapacity(
 	ctx context.Context,
 	sheetsSvc *sheets.Service,
+	cfg workflowConfig,
 	spreadsheetID, tab string,
 	requiredRows, requiredCols int,
 	state *sheetGridState,
@@ -1147,7 +1389,11 @@ func ensureSheetGridCapacity(
 			},
 		},
 	}
-	if _, err := sheetsSvc.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do(); err != nil {
+	err := runSheetsWriteWithRetry(ctx, cfg, "resize_destination_sheet", func() error {
+		_, batchErr := sheetsSvc.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do()
+		return batchErr
+	})
+	if err != nil {
 		return fmt.Errorf("resize destination sheet to rows=%d cols=%d: %w", newRows, newCols, err)
 	}
 	state.rows = newRows
@@ -1356,6 +1602,32 @@ func rowMatchesFilters(row []string, receiverTypeIdx, currentStationIdx int) boo
 	return strings.EqualFold(receiverType, "Station") && strings.EqualFold(currentStation, "SOC 5")
 }
 
+func shouldImportPendingReceive(row []string, receiveStatusIdx int) bool {
+	if receiveStatusIdx < 0 || receiveStatusIdx >= len(row) {
+		return false
+	}
+	return containsTextFold(row[receiveStatusIdx], "Pending Receive")
+}
+
+func shouldImportPackedInAnotherTO(row []string, remarkIdx int) bool {
+	if remarkIdx < 0 || remarkIdx >= len(row) {
+		return false
+	}
+	remark := row[remarkIdx]
+	return containsTextFold(remark, "Pack in another TO") && containsTextFold(remark, "Pack in another HandoverTask")
+}
+
+func shouldImportNoLHPacking(row []string, remarkIdx int) bool {
+	if remarkIdx < 0 || remarkIdx >= len(row) {
+		return false
+	}
+	return containsTextFold(row[remarkIdx], "Receive in")
+}
+
+func containsTextFold(value, needle string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(value)), strings.ToLower(strings.TrimSpace(needle)))
+}
+
 func pickColumns(row []string, indexes []int) []string {
 	out := make([]string, len(indexes))
 	for i, idx := range indexes {
@@ -1505,6 +1777,14 @@ func getDurationSeconds(name string, defaultSeconds int) time.Duration {
 		seconds = defaultSeconds
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func getDurationMillis(name string, defaultMillis int) time.Duration {
+	millis := getIntEnv(name, defaultMillis)
+	if millis <= 0 {
+		millis = defaultMillis
+	}
+	return time.Duration(millis) * time.Millisecond
 }
 
 func firstNonEmpty(values ...string) string {
