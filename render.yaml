@@ -61,6 +61,9 @@ services:
       # Optional per-environment URL; keep unmanaged unless you want Blueprint to overwrite it.
       - key: WF1_SELF_PING_URL
         sync: false
+      - key: WF1_SMOKE_TEST_RENDER_ENV_SYNC
+        value: "1"
+
 
   - type: web
     name: go-bot-workflow-drive-csv-consolidation
