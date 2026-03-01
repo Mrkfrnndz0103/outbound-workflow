@@ -168,6 +168,7 @@ func TestBaselineDoesNotResendOnNextCycle(t *testing.T) {
 		BootstrapSendExisting: false,
 		DryRun:                true,
 		ForceSendAfter:        5 * time.Minute,
+		MaxReadyAge:           5 * time.Minute,
 	}
 	state := workflowState{
 		RowPlates:         map[string]string{},
@@ -203,5 +204,48 @@ func TestBaselineDoesNotResendOnNextCycle(t *testing.T) {
 	}
 	if second.AlreadySentSkipped != 1 {
 		t.Fatalf("expected row to be skipped as already sent, got already_sent_skipped=%d", second.AlreadySentSkipped)
+	}
+}
+
+func TestIsCandidateStaleForSend(t *testing.T) {
+	now := time.Date(2026, 2, 28, 17, 40, 0, 0, time.UTC)
+	state := workflowState{
+		RowReadyAt: map[string]string{
+			"1": now.Add(-10 * time.Minute).Format(time.RFC3339),
+			"2": now.Add(-2 * time.Minute).Format(time.RFC3339),
+		},
+		RowFirstSeenAt: map[string]string{
+			"3": now.Add(-11 * time.Minute).Format(time.RFC3339),
+		},
+	}
+
+	if !isCandidateStaleForSend("1", true, false, state, 5*time.Minute, now) {
+		t.Fatalf("expected complete candidate to be stale")
+	}
+	if isCandidateStaleForSend("2", true, false, state, 5*time.Minute, now) {
+		t.Fatalf("expected complete candidate to be fresh")
+	}
+	if !isCandidateStaleForSend("3", false, true, state, 5*time.Minute, now) {
+		t.Fatalf("expected force candidate to be stale")
+	}
+	if isCandidateStaleForSend("1", true, false, state, 0, now) {
+		t.Fatalf("expected staleness filter disabled when maxAge<=0")
+	}
+}
+
+func TestIsProvideTimePastAge(t *testing.T) {
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+	if !isProvideTimePastAge("3/1/2026 11:55:00", 5*time.Minute, now) {
+		t.Fatalf("expected provide time exactly 5 minutes old to be eligible")
+	}
+	if isProvideTimePastAge("3/1/2026 11:57:30", 5*time.Minute, now) {
+		t.Fatalf("expected provide time newer than 5 minutes to be ineligible")
+	}
+	if isProvideTimePastAge("not-a-time", 5*time.Minute, now) {
+		t.Fatalf("expected invalid provide time to be ineligible")
+	}
+	if !isProvideTimePastAge("not-a-time", 0, now) {
+		t.Fatalf("expected minAge<=0 to disable provide-time age filter")
 	}
 }

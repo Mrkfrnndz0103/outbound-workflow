@@ -16,6 +16,8 @@ services:
         value: "3"
       - key: WF1_FORCE_SEND_AFTER_SECONDS
         value: "300"
+      - key: WF1_PROVIDE_TIME_MIN_AGE_SECONDS
+        value: "300"
       - key: WF1_GROUP_DEFER_SECONDS
         value: "20"
       - key: WF1_SEND_MIN_INTERVAL_MS
@@ -51,7 +53,7 @@ services:
       - key: WF1_SHEET_TAB
         value: MM LH Provided
       - key: WF1_SHEET_RANGE
-        value: A650:M
+        value: A1082:M
       - key: SEATALK_SYSTEM_WEBHOOK_URL
         sync: false
       - key: WF1_GOOGLE_CREDENTIALS_JSON

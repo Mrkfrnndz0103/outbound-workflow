@@ -55,12 +55,14 @@ type workflowConfig struct {
 	Continuous            bool
 	PollInterval          time.Duration
 	ForceSendAfter        time.Duration
+	MaxReadyAge           time.Duration
 	GroupDefer            time.Duration
 	SendMinInterval       time.Duration
 	SendRetryMaxAttempts  int
 	SendRetryBaseDelay    time.Duration
 	SendRetryMaxDelay     time.Duration
 	HTTPTimeout           time.Duration
+	ProvideTimeMinAge     time.Duration
 }
 
 type sheetRow struct {
@@ -96,6 +98,7 @@ type processSummary struct {
 	Ignored              int
 	BaselineSkipped      int
 	NotReadySkipped      int
+	StaleSkipped         int
 	GroupHoldSkipped     int
 	AlreadySentSkipped   int
 	EmptyPlateResetCount int
@@ -125,6 +128,7 @@ type workflowStatus struct {
 	Ignored               int    `json:"ignored"`
 	BaselineSkipped       int    `json:"baseline_skipped"`
 	NotReadySkipped       int    `json:"not_ready_skipped"`
+	StaleSkipped          int    `json:"stale_skipped"`
 	AlreadySentSkipped    int    `json:"already_sent_skipped"`
 	EmptyPlateResetCount  int    `json:"empty_plate_reset_count"`
 	PendingForceSendCount int    `json:"pending_force_send_count"`
@@ -176,6 +180,7 @@ func main() {
 			Ignored:               summary.Ignored,
 			BaselineSkipped:       summary.BaselineSkipped,
 			NotReadySkipped:       summary.NotReadySkipped,
+			StaleSkipped:          summary.StaleSkipped,
 			AlreadySentSkipped:    summary.AlreadySentSkipped,
 			EmptyPlateResetCount:  summary.EmptyPlateResetCount,
 			PendingForceSendCount: countPendingForceDue(rows, state, cfg.ForceSendAfter, time.Now().UTC()),
@@ -192,7 +197,7 @@ func main() {
 
 		if cfg.Continuous {
 			logger.Printf(
-				"cycle=%d rows=%d sent=%d failed=%d ignored=%d baseline_skipped=%d not_ready_skipped=%d group_hold_skipped=%d already_sent_skipped=%d empty_plate_resets=%d pending_force_send=%d state_file=%s status_file=%s",
+				"cycle=%d rows=%d sent=%d failed=%d ignored=%d baseline_skipped=%d not_ready_skipped=%d stale_skipped=%d group_hold_skipped=%d already_sent_skipped=%d empty_plate_resets=%d pending_force_send=%d state_file=%s status_file=%s",
 				cycle,
 				len(rows),
 				summary.Sent,
@@ -200,6 +205,7 @@ func main() {
 				summary.Ignored,
 				summary.BaselineSkipped,
 				summary.NotReadySkipped,
+				summary.StaleSkipped,
 				summary.GroupHoldSkipped,
 				summary.AlreadySentSkipped,
 				summary.EmptyPlateResetCount,
@@ -211,13 +217,14 @@ func main() {
 		}
 
 		logger.Printf(
-			"completed rows=%d sent=%d failed=%d ignored=%d baseline_skipped=%d not_ready_skipped=%d group_hold_skipped=%d already_sent_skipped=%d empty_plate_resets=%d pending_force_send=%d state_file=%s status_file=%s",
+			"completed rows=%d sent=%d failed=%d ignored=%d baseline_skipped=%d not_ready_skipped=%d stale_skipped=%d group_hold_skipped=%d already_sent_skipped=%d empty_plate_resets=%d pending_force_send=%d state_file=%s status_file=%s",
 			len(rows),
 			summary.Sent,
 			summary.Failed,
 			summary.Ignored,
 			summary.BaselineSkipped,
 			summary.NotReadySkipped,
+			summary.StaleSkipped,
 			summary.GroupHoldSkipped,
 			summary.AlreadySentSkipped,
 			summary.EmptyPlateResetCount,
@@ -298,12 +305,14 @@ func loadConfig() (workflowConfig, error) {
 	timeout := getDurationSeconds("WF1_HTTP_TIMEOUT_SECONDS", int(defaultHTTPTimeout/time.Second))
 	pollInterval := getDurationSeconds("WF1_POLL_INTERVAL_SECONDS", 10)
 	forceAfter := getDurationSeconds("WF1_FORCE_SEND_AFTER_SECONDS", 300)
+	maxReadyAge := getDurationSeconds("WF1_MAX_READY_AGE_SECONDS", 300)
 	groupDefer := getDurationSeconds("WF1_GROUP_DEFER_SECONDS", 20)
 	sendMinInterval := getDurationMillis("WF1_SEND_MIN_INTERVAL_MS", 1200)
 	sendRetryMaxAttempts := getIntEnv("WF1_SEND_RETRY_MAX_ATTEMPTS", 5)
 	sendRetryBaseDelay := getDurationMillis("WF1_SEND_RETRY_BASE_MS", 1000)
 	sendRetryMaxDelay := getDurationMillis("WF1_SEND_RETRY_MAX_MS", 30000)
 	selfPingInterval := getDurationSeconds("WF1_SELF_PING_INTERVAL_SECONDS", 300)
+	provideTimeMinAge := getDurationSeconds("WF1_PROVIDE_TIME_MIN_AGE_SECONDS", 300)
 	credsFile := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF1_GOOGLE_CREDENTIALS_FILE")),
 		strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")),
@@ -351,12 +360,14 @@ func loadConfig() (workflowConfig, error) {
 		Continuous:            continuous,
 		PollInterval:          pollInterval,
 		ForceSendAfter:        forceAfter,
+		MaxReadyAge:           maxReadyAge,
 		GroupDefer:            groupDefer,
 		SendMinInterval:       sendMinInterval,
 		SendRetryMaxAttempts:  sendRetryMaxAttempts,
 		SendRetryBaseDelay:    sendRetryBaseDelay,
 		SendRetryMaxDelay:     sendRetryMaxDelay,
 		HTTPTimeout:           timeout,
+		ProvideTimeMinAge:     provideTimeMinAge,
 	}, nil
 }
 
@@ -516,12 +527,13 @@ func processRows(
 			continue
 		}
 
-		readyComplete := row.hasRequiredMessageFields()
-		readyForce := row.hasForceSendFields() && isForceDue(state.RowFirstSeenAt[key], cfg.ForceSendAfter, now)
+		provideTimeReady := isProvideTimePastAge(row.ProvideTime, cfg.ProvideTimeMinAge, now)
+		readyComplete := row.hasRequiredMessageFields() && provideTimeReady
+		readyForce := row.hasForceSendFields() && provideTimeReady && isForceDue(state.RowFirstSeenAt[key], cfg.ForceSendAfter, now)
 		isDoubleReq := isDoubleRequestText(currPlate)
 
 		if isDoubleReq {
-			readyComplete = row.hasDoubleRequestFields()
+			readyComplete = row.hasDoubleRequestFields() && provideTimeReady
 			readyForce = false
 		}
 
@@ -532,7 +544,7 @@ func processRows(
 			delete(state.RowReadyAt, key)
 			if cfg.DebugLogSkips {
 				logger.Printf(
-					"skip row=%d reason=not_ready plate=%s has_request_time=%t has_cluster=%t has_fleet_size=%t has_lh_type=%t has_provide_time=%t force_due=%t",
+					"skip row=%d reason=not_ready plate=%s has_request_time=%t has_cluster=%t has_fleet_size=%t has_lh_type=%t has_provide_time=%t provide_time_age_ok=%t force_due=%t",
 					row.RowNumber,
 					currPlate,
 					row.RequestTime != "",
@@ -540,6 +552,7 @@ func processRows(
 					row.FleetSizeProvided != "",
 					row.LHType != "",
 					row.ProvideTime != "",
+					provideTimeReady,
 					readyForce,
 				)
 			}
@@ -551,6 +564,23 @@ func processRows(
 			}
 		} else {
 			delete(state.RowReadyAt, key)
+		}
+		if isCandidateStaleForSend(key, readyComplete, readyForce, state, cfg.MaxReadyAge, now) {
+			state.RowSentForPlate[key] = currPlate
+			delete(state.RowReadyAt, key)
+			summary.Ignored++
+			summary.StaleSkipped++
+			if cfg.DebugLogSkips {
+				logger.Printf(
+					"skip row=%d reason=stale plate=%s max_ready_age=%s ready_complete=%t ready_force=%t",
+					row.RowNumber,
+					currPlate,
+					cfg.MaxReadyAge,
+					readyComplete,
+					readyForce,
+				)
+			}
+			continue
 		}
 
 		candidates = append(candidates, sendCandidate{
@@ -785,6 +815,34 @@ func isForceDue(firstSeenRaw string, forceAfter time.Duration, now time.Time) bo
 	return now.Sub(firstSeenAt) >= forceAfter
 }
 
+func isCandidateStaleForSend(
+	key string,
+	readyComplete bool,
+	readyForce bool,
+	state workflowState,
+	maxAge time.Duration,
+	now time.Time,
+) bool {
+	if maxAge <= 0 {
+		return false
+	}
+
+	if readyComplete {
+		readyAt, err := time.Parse(time.RFC3339, strings.TrimSpace(state.RowReadyAt[key]))
+		if err == nil && now.Sub(readyAt) > maxAge {
+			return true
+		}
+	}
+
+	if readyForce && !readyComplete {
+		firstSeenAt, err := time.Parse(time.RFC3339, strings.TrimSpace(state.RowFirstSeenAt[key]))
+		if err == nil && now.Sub(firstSeenAt) > maxAge {
+			return true
+		}
+	}
+	return false
+}
+
 func (r sheetRow) hasRequiredMessageFields() bool {
 	return r.RequestTime != "" && r.Cluster != "" && r.FleetSizeProvided != "" && r.LHType != "" && r.ProvideTime != ""
 }
@@ -896,6 +954,17 @@ func parseProvideTime(raw string) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
+}
+
+func isProvideTimePastAge(raw string, minAge time.Duration, now time.Time) bool {
+	if minAge <= 0 {
+		return true
+	}
+	provideTS, ok := parseProvideTime(raw)
+	if !ok {
+		return false
+	}
+	return !provideTS.After(now.Add(-minAge))
 }
 
 func clusterWithDock(cluster string, dock string) string {

@@ -177,6 +177,8 @@ Optional env:
 - `WF1_CONTINUOUS` (default `false`)
 - `WF1_POLL_INTERVAL_SECONDS` (default `10`)
 - `WF1_FORCE_SEND_AFTER_SECONDS` (default `300`)
+- `WF1_MAX_READY_AGE_SECONDS` (default `300`; skip stale ready rows older than this window)
+- `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` (default `300`; send only when column `I` Provide Time is at least this old vs current time)
 - `WF1_GROUP_DEFER_SECONDS` (default `20`)
 - `WF1_SEND_MIN_INTERVAL_MS` (default `1200`)
 - `WF1_SEND_RETRY_MAX_ATTEMPTS` (default `5`)
@@ -200,6 +202,8 @@ Send rule:
 - Normal send: when `F`, `H`, and `I` are available (with required `B`, `C`, `G`).
 - If 2+ ready rows have the same `Provide Time` minute (`I`, seconds ignored), they are sent as one merged message.
 - A ready row is held briefly (`WF1_GROUP_DEFER_SECONDS`) so rows arriving a few seconds apart can still merge.
+- Provide-time age gate: rows are eligible only when column `I` (Provide Time) is at least `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` old.
+- Stale-ready safeguard: rows that stay unsent longer than `WF1_MAX_READY_AGE_SECONDS` are skipped to avoid replaying old backlog when webhook recovers.
 - Force send: if `F` is already filled but `H/I` stay missing for 5 minutes, send once anyway.
 - Special case: if `F` contains `DOUBLE` or `DOUBLE REQUEST`, send:
   `Double Request!` + `{C} - {M}` and force `@All` mention via `at_all=true`.
