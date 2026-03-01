@@ -180,10 +180,10 @@ Optional env:
 - `WF1_DRY_RUN` (default `false`)
 - `WF1_DEBUG_LOG_SKIPS` (default `false`)
 - `WF1_CONTINUOUS` (default `false`)
-- `WF1_POLL_INTERVAL_SECONDS` (default `10`)
-- `WF1_FORCE_SEND_AFTER_SECONDS` (default `300`)
+- `WF1_POLL_INTERVAL_SECONDS` (default `10`; project setting uses `1` for near-real-time polling)
+- `WF1_FORCE_SEND_AFTER_SECONDS` (default `300`; project setting uses `60`)
 - `WF1_MAX_READY_AGE_SECONDS` (default `300`; skip stale ready rows older than this window)
-- `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` (default `300`; send only when column `I` Provide Time is at least this old vs current time)
+- `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` (legacy compatibility flag; project setting keeps this at `0`)
 - `WF1_GROUP_DEFER_SECONDS` (default `20`)
 - `WF1_SEND_MIN_INTERVAL_MS` (default `1200`)
 - `WF1_SEND_RETRY_MAX_ATTEMPTS` (default `5`)
@@ -199,18 +199,18 @@ For fast trigger behavior when column `F` is formula-driven, run in watch mode:
 
 ```powershell
 $env:WF1_CONTINUOUS = "true"
-$env:WF1_POLL_INTERVAL_SECONDS = "5"
+$env:WF1_POLL_INTERVAL_SECONDS = "1"
 go run ./cmd/workflow-mm-lh-provided
 ```
 
 Send rule:
 
-- Normal send: when `F`, `H`, and `I` are available (with required `B`, `C`, `G`).
+- Normal send: when `F`, `H`, and `I` are available.
 - If 2+ ready rows have the same `Provide Time` minute (`I`, seconds ignored), they are sent as one merged message.
 - A ready row is held briefly (`WF1_GROUP_DEFER_SECONDS`) so rows arriving a few seconds apart can still merge.
-- Provide-time age gate: rows are eligible only when column `I` (Provide Time) is at least `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` old.
 - Stale-ready safeguard: rows that stay unsent longer than `WF1_MAX_READY_AGE_SECONDS` are skipped to avoid replaying old backlog when webhook recovers.
-- Force send: if `F` is already filled but `H/I` stay missing for 5 minutes, send once anyway.
+- Force send: if `F` is already filled but `H` or `I` is still missing for `WF1_FORCE_SEND_AFTER_SECONDS` (project setting: 60s), send once anyway.
+- Forced-send message keeps missing `H/I` values blank.
 - Special case: if `F` contains `DOUBLE` or `DOUBLE REQUEST`, send:
   `Double Request!` + `{C} - {M}` and force `@All` mention.
 - Outbound sends are throttled/retried to handle SeaTalk rate limits (`429`, code `8`).

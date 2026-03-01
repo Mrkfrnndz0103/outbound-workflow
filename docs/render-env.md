@@ -24,15 +24,15 @@ go run ./scripts/generate_render_env_doc.go
 | `WF1_DEBUG_LOG_SKIPS` | `value` (managed) | `false` |
 | `WF1_DRY_RUN` | `value` (managed) | `false` |
 | `WF1_ENABLE_HEALTH_SERVER` | `value` (managed) | `true` |
-| `WF1_FORCE_SEND_AFTER_SECONDS` | `value` (managed) | `300` |
+| `WF1_FORCE_SEND_AFTER_SECONDS` | `value` (managed) | `60` |
 | `WF1_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
 | `WF1_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
 | `WF1_GROUP_DEFER_SECONDS` | `value` (managed) | `20` |
 | `WF1_HEALTH_PORT` | `value` (managed) | `""` |
 | `WF1_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `10` |
 | `WF1_MAX_READY_AGE_SECONDS` | `value` (managed) | `300` |
-| `WF1_POLL_INTERVAL_SECONDS` | `value` (managed) | `3` |
-| `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` | `value` (managed) | `300` |
+| `WF1_POLL_INTERVAL_SECONDS` | `value` (managed) | `1` |
+| `WF1_PROVIDE_TIME_MIN_AGE_SECONDS` | `value` (managed) | `0` |
 | `WF1_SEATALK_APP_ID` | `value` (managed) | `MzQ0MDc5Nzc5MjQ2` |
 | `WF1_SEATALK_APP_SECRET` | `sync: false` (unmanaged/secret) | - |
 | `WF1_SEATALK_BASE_URL` | `value` (managed) | `https://openapi.seatalk.io` |
@@ -46,7 +46,7 @@ go run ./scripts/generate_render_env_doc.go
 | `WF1_SEND_RETRY_MAX_ATTEMPTS` | `value` (managed) | `5` |
 | `WF1_SEND_RETRY_MAX_MS` | `value` (managed) | `30000` |
 | `WF1_SHEET_ID` | `value` (managed) | `1mhzIfYfF1VSA9sPiqnLw7OgY1S_gI0wEzkXBQ1CCuDg` |
-| `WF1_SHEET_RANGE` | `value` (managed) | `A1082:M` |
+| `WF1_SHEET_RANGE` | `value` (managed) | `A1658:M` |
 | `WF1_SHEET_TAB` | `value` (managed) | `MM LH Provided` |
 | `WF1_STATE_FILE` | `value` (managed) | `data/workflow1-mm-lh-provided-state.json` |
 | `WF1_STATUS_FILE` | `value` (managed) | `data/workflow1-mm-lh-provided-status.json` |

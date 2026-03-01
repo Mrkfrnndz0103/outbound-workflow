@@ -49,9 +49,7 @@ func TestBuildMessage(t *testing.T) {
 
 func TestHasRequiredMessageFields(t *testing.T) {
 	valid := sheetRow{
-		RequestTime:       "rq",
-		Cluster:           "cluster",
-		FleetSizeProvided: "10",
+		PlateNumber:       "ABC123",
 		LHType:            "lh",
 		ProvideTime:       "pv",
 	}
@@ -63,6 +61,23 @@ func TestHasRequiredMessageFields(t *testing.T) {
 	invalid.ProvideTime = ""
 	if invalid.hasRequiredMessageFields() {
 		t.Fatalf("expected required fields to be invalid")
+	}
+}
+
+func TestBuildForceMessageKeepsBlankHI(t *testing.T) {
+	row := sheetRow{
+		Cluster:           "Cluster A",
+		DockLabel:         "Dock 9",
+		PlateNumber:       "NIE 1506",
+		FleetSizeProvided: "6WH",
+		LHType:            "",
+		ProvideTime:       "",
+	}
+
+	got := buildForceMessage(row)
+	want := "<mention-tag target=\"seatalk://user?id=0\"/> For Docking\n\n      **Cluster A - Dock 9**\n      **Plate #: NIE 1506**\n      6WH - \n      pvd_tme: "
+	if got != want {
+		t.Fatalf("unexpected force message:\nwant: %q\n got: %q", want, got)
 	}
 }
 

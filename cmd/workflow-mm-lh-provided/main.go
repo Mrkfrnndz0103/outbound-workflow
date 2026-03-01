@@ -587,13 +587,12 @@ func processRows(
 			continue
 		}
 
-		provideTimeReady := isProvideTimePastAge(row.ProvideTime, cfg.ProvideTimeMinAge, now)
-		readyComplete := row.hasRequiredMessageFields() && provideTimeReady
-		readyForce := row.hasForceSendFields() && provideTimeReady && isForceDue(state.RowFirstSeenAt[key], cfg.ForceSendAfter, now)
+		readyComplete := row.hasRequiredMessageFields()
+		readyForce := row.hasForceSendFields() && isForceDue(state.RowFirstSeenAt[key], cfg.ForceSendAfter, now)
 		isDoubleReq := isDoubleRequestText(currPlate)
 
 		if isDoubleReq {
-			readyComplete = row.hasDoubleRequestFields() && provideTimeReady
+			readyComplete = row.hasDoubleRequestFields()
 			readyForce = false
 		}
 
@@ -604,15 +603,12 @@ func processRows(
 			delete(state.RowReadyAt, key)
 			if cfg.DebugLogSkips {
 				logger.Printf(
-					"skip row=%d reason=not_ready plate=%s has_request_time=%t has_cluster=%t has_fleet_size=%t has_lh_type=%t has_provide_time=%t provide_time_age_ok=%t force_due=%t",
+					"skip row=%d reason=not_ready plate=%s has_plate=%t has_lh_type=%t has_provide_time=%t force_due=%t",
 					row.RowNumber,
 					currPlate,
-					row.RequestTime != "",
-					row.Cluster != "",
-					row.FleetSizeProvided != "",
+					row.PlateNumber != "",
 					row.LHType != "",
 					row.ProvideTime != "",
-					provideTimeReady,
 					readyForce,
 				)
 			}
@@ -787,6 +783,8 @@ func dispatchCandidates(
 		if candidate.IsDoubleReq {
 			content = buildDoubleRequestMessage(candidate.Row)
 			atAll = true
+		} else if candidate.ReadyForce && !candidate.ReadyComplete {
+			content = buildForceMessage(candidate.Row)
 		}
 		if cfg.DryRun {
 			logger.Printf("dry_run=true row=%d content=%q", candidate.Row.RowNumber, content)
@@ -905,7 +903,9 @@ func isCandidateStaleForSend(
 }
 
 func (r sheetRow) hasRequiredMessageFields() bool {
-	return r.RequestTime != "" && r.Cluster != "" && r.FleetSizeProvided != "" && r.LHType != "" && r.ProvideTime != ""
+	return strings.TrimSpace(r.PlateNumber) != "" &&
+		strings.TrimSpace(r.LHType) != "" &&
+		strings.TrimSpace(r.ProvideTime) != ""
 }
 
 func (r sheetRow) hasDoubleRequestFields() bool {
@@ -913,7 +913,11 @@ func (r sheetRow) hasDoubleRequestFields() bool {
 }
 
 func (r sheetRow) hasForceSendFields() bool {
-	return r.RequestTime != "" && r.Cluster != "" && r.FleetSizeProvided != ""
+	if strings.TrimSpace(r.PlateNumber) == "" {
+		return false
+	}
+	// Force-send path applies when plate exists but full trigger fields are not yet complete.
+	return strings.TrimSpace(r.LHType) == "" || strings.TrimSpace(r.ProvideTime) == ""
 }
 
 func isDoubleRequestText(value string) bool {
@@ -944,6 +948,17 @@ func buildMessage(row sheetRow) string {
 		valueOrPending(row.FleetSizeProvided),
 		valueOrPending(row.LHType),
 		formatProvideTime(valueOrPending(row.ProvideTime)),
+	)
+}
+
+func buildForceMessage(row sheetRow) string {
+	return fmt.Sprintf(
+		"<mention-tag target=\"seatalk://user?id=0\"/> For Docking\n\n      **%s**\n      **Plate #: %s**\n      %s - %s\n      pvd_tme: %s",
+		valueOrPending(clusterWithDock(row.Cluster, row.DockLabel)),
+		valueOrPending(row.PlateNumber),
+		valueOrPending(row.FleetSizeProvided),
+		strings.TrimSpace(row.LHType),
+		strings.TrimSpace(row.ProvideTime),
 	)
 }
 
