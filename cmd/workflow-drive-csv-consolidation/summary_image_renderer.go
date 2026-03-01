@@ -13,7 +13,12 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"math"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,6 +42,9 @@ import (
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
 )
 
@@ -135,6 +143,7 @@ type styledRangeSegment struct {
 
 func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheetsSvc *sheets.Service) (summaryImageSendResult, error) {
 	var result summaryImageSendResult
+	var exportHTTPClient *http.Client
 
 	if cfg.SummaryWaitAfterImport > 0 {
 		if err := waitWithContext(ctx, cfg.SummaryWaitAfterImport); err != nil {
@@ -148,9 +157,19 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	}
 	result.Stable = stable
 
+	if cfg.SummaryRenderMode == "pdf_png" {
+		client, clientErr := newGoogleAuthenticatedHTTPClient(ctx, cfg)
+		if clientErr != nil {
+			return result, clientErr
+		}
+		exportHTTPClient = client
+	}
+
 	primaryImage, err := buildEncodedSummaryImage(
 		ctx,
+		cfg,
 		sheetsSvc,
+		exportHTTPClient,
 		cfg.SummarySheetID,
 		cfg.SummaryTab,
 		cfg.SummaryRange,
@@ -170,7 +189,9 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	if cfg.SummarySecondEnabled {
 		secondaryImage, secondaryErr := buildEncodedConnectedSummaryImage(
 			ctx,
+			cfg,
 			sheetsSvc,
+			exportHTTPClient,
 			cfg.SummarySheetID,
 			cfg.SummarySecondTab,
 			cfg.SummarySecondRanges,
@@ -220,7 +241,9 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 
 func buildEncodedSummaryImage(
 	ctx context.Context,
+	cfg workflowConfig,
 	sheetsSvc *sheets.Service,
+	exportHTTPClient *http.Client,
 	sheetID string,
 	tab string,
 	captureRange string,
@@ -230,11 +253,7 @@ func buildEncodedSummaryImage(
 	maxBase64Bytes int,
 	label string,
 ) (encodedSummaryImage, error) {
-	styledRange, err := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
-	if err != nil {
-		return encodedSummaryImage{}, err
-	}
-	pngRaw, err := renderStyledRangeImage(styledRange, maxWidthPx, renderScale, autoFitColumns)
+	pngRaw, err := renderSummaryRangeToPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, captureRange, maxWidthPx, renderScale, autoFitColumns)
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
@@ -252,7 +271,9 @@ func buildEncodedSummaryImage(
 
 func buildEncodedConnectedSummaryImage(
 	ctx context.Context,
+	cfg workflowConfig,
 	sheetsSvc *sheets.Service,
+	exportHTTPClient *http.Client,
 	sheetID string,
 	tab string,
 	ranges []string,
@@ -262,11 +283,7 @@ func buildEncodedConnectedSummaryImage(
 	maxBase64Bytes int,
 	label string,
 ) (encodedSummaryImage, error) {
-	connectedData, err := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
-	if err != nil {
-		return encodedSummaryImage{}, err
-	}
-	pngRaw, err := renderStyledRangeImage(connectedData, maxWidthPx, renderScale, autoFitColumns)
+	pngRaw, err := renderConnectedSummaryRangesToPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, ranges, maxWidthPx, renderScale, autoFitColumns)
 	if err != nil {
 		return encodedSummaryImage{}, err
 	}
@@ -280,6 +297,315 @@ func buildEncodedConnectedSummaryImage(
 		Format:     imageFmt,
 		RawBytes:   imageBytes,
 	}, nil
+}
+
+func renderSummaryRangeToPNG(
+	ctx context.Context,
+	cfg workflowConfig,
+	sheetsSvc *sheets.Service,
+	exportHTTPClient *http.Client,
+	sheetID string,
+	tab string,
+	captureRange string,
+	maxWidthPx int,
+	renderScale int,
+	autoFitColumns bool,
+) ([]byte, error) {
+	if cfg.SummaryRenderMode == "pdf_png" {
+		return renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, captureRange)
+	}
+
+	styledRange, err := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
+	if err != nil {
+		return nil, err
+	}
+	return renderStyledRangeImage(styledRange, maxWidthPx, renderScale, autoFitColumns)
+}
+
+func renderConnectedSummaryRangesToPNG(
+	ctx context.Context,
+	cfg workflowConfig,
+	sheetsSvc *sheets.Service,
+	exportHTTPClient *http.Client,
+	sheetID string,
+	tab string,
+	ranges []string,
+	maxWidthPx int,
+	renderScale int,
+	autoFitColumns bool,
+) ([]byte, error) {
+	if cfg.SummaryRenderMode != "pdf_png" {
+		connectedData, err := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
+		if err != nil {
+			return nil, err
+		}
+		return renderStyledRangeImage(connectedData, maxWidthPx, renderScale, autoFitColumns)
+	}
+
+	type renderedSegment struct {
+		Bounds sheetRange
+		Image  image.Image
+	}
+	segments := make([]renderedSegment, 0, len(ranges))
+	minStartCol := 0
+	for _, rawRange := range ranges {
+		rng := strings.TrimSpace(rawRange)
+		if rng == "" {
+			continue
+		}
+		parsed, err := parseA1Range(rng)
+		if err != nil {
+			return nil, err
+		}
+		pngRaw, err := renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, rng)
+		if err != nil {
+			return nil, err
+		}
+		img, _, err := image.Decode(bytes.NewReader(pngRaw))
+		if err != nil {
+			return nil, fmt.Errorf("decode pdf->png image for range %s: %w", rng, err)
+		}
+		segments = append(segments, renderedSegment{
+			Bounds: parsed,
+			Image:  img,
+		})
+		if minStartCol == 0 || parsed.startCol < minStartCol {
+			minStartCol = parsed.startCol
+		}
+	}
+	if len(segments) == 0 {
+		return nil, errors.New("no ranges available for pdf_png render mode")
+	}
+
+	totalWidth := 0
+	totalHeight := 0
+	offsets := make([]int, len(segments))
+	for i, segment := range segments {
+		colSpan := maxInt(segment.Bounds.endCol-segment.Bounds.startCol+1, 1)
+		pixelsPerCol := float64(segment.Image.Bounds().Dx()) / float64(colSpan)
+		offsetCols := maxInt(segment.Bounds.startCol-minStartCol, 0)
+		offsetX := int(math.Round(float64(offsetCols) * pixelsPerCol))
+		offsets[i] = offsetX
+		totalWidth = maxInt(totalWidth, offsetX+segment.Image.Bounds().Dx())
+		totalHeight += segment.Image.Bounds().Dy()
+	}
+	if totalWidth <= 0 || totalHeight <= 0 {
+		return nil, errors.New("unable to compose connected pdf->png summary image")
+	}
+
+	canvas := image.NewRGBA(image.Rect(0, 0, totalWidth, totalHeight))
+	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{255, 255, 255, 255}}, image.Point{}, draw.Src)
+	cursorY := 0
+	for i, segment := range segments {
+		rect := image.Rect(offsets[i], cursorY, offsets[i]+segment.Image.Bounds().Dx(), cursorY+segment.Image.Bounds().Dy())
+		draw.Draw(canvas, rect, segment.Image, segment.Image.Bounds().Min, draw.Over)
+		cursorY += segment.Image.Bounds().Dy()
+	}
+
+	var buf bytes.Buffer
+	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	if err := enc.Encode(&buf, canvas); err != nil {
+		return nil, fmt.Errorf("encode connected pdf->png composition: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func renderRangeViaPDFPNG(
+	ctx context.Context,
+	cfg workflowConfig,
+	sheetsSvc *sheets.Service,
+	exportHTTPClient *http.Client,
+	sheetID string,
+	tab string,
+	captureRange string,
+) ([]byte, error) {
+	if exportHTTPClient == nil {
+		return nil, errors.New("google authenticated http client is required for pdf_png render mode")
+	}
+	sheetGID, err := lookupSheetGID(ctx, sheetsSvc, sheetID, tab)
+	if err != nil {
+		return nil, err
+	}
+	exportURL := buildSheetsPDFExportURL(sheetID, sheetGID, captureRange)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, exportURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build sheets export request: %w", err)
+	}
+	resp, err := exportHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request sheets export pdf: %w", err)
+	}
+	defer resp.Body.Close()
+
+	pdfRaw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read sheets export pdf body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sheets export pdf status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(pdfRaw)))
+	}
+
+	pngRaw, err := convertPDFToPNG(ctx, pdfRaw, cfg.SummaryPDFDPI, cfg.SummaryPDFConverter, cfg.TempDir)
+	if err != nil {
+		return nil, err
+	}
+	return pngRaw, nil
+}
+
+func lookupSheetGID(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) (int64, error) {
+	resp, err := sheetsSvc.Spreadsheets.Get(sheetID).
+		Fields("sheets(properties(sheetId,title))").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return 0, fmt.Errorf("load sheet metadata for pdf export: %w", err)
+	}
+	normalizedTab := normalizeSheetTabName(tab)
+	for _, sh := range resp.Sheets {
+		if sh == nil || sh.Properties == nil {
+			continue
+		}
+		if normalizeSheetTabName(sh.Properties.Title) == normalizedTab {
+			return sh.Properties.SheetId, nil
+		}
+	}
+	return 0, fmt.Errorf("sheet tab %q not found for pdf export", tab)
+}
+
+func buildSheetsPDFExportURL(sheetID string, gid int64, captureRange string) string {
+	values := url.Values{}
+	values.Set("format", "pdf")
+	values.Set("gid", strconv.FormatInt(gid, 10))
+	values.Set("range", strings.TrimSpace(captureRange))
+	values.Set("attachment", "false")
+	values.Set("sheetnames", "false")
+	values.Set("printtitle", "false")
+	values.Set("pagenum", "UNDEFINED")
+	values.Set("gridlines", "false")
+	values.Set("fzr", "false")
+	values.Set("fitw", "true")
+	values.Set("top_margin", "0")
+	values.Set("bottom_margin", "0")
+	values.Set("left_margin", "0")
+	values.Set("right_margin", "0")
+	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?%s", url.PathEscape(strings.TrimSpace(sheetID)), values.Encode())
+}
+
+func newGoogleAuthenticatedHTTPClient(ctx context.Context, cfg workflowConfig) (*http.Client, error) {
+	var (
+		raw []byte
+		err error
+	)
+	if strings.TrimSpace(cfg.GoogleCredentialsJSON) != "" {
+		raw = []byte(cfg.GoogleCredentialsJSON)
+	} else {
+		raw, err = os.ReadFile(cfg.GoogleCredentialsFile)
+		if err != nil {
+			return nil, fmt.Errorf("read google credentials file for pdf export: %w", err)
+		}
+	}
+	creds, err := google.CredentialsFromJSON(ctx, raw, drive.DriveReadonlyScope, sheets.SpreadsheetsReadonlyScope)
+	if err != nil {
+		return nil, fmt.Errorf("google credentials for pdf export: %w", err)
+	}
+	return oauth2.NewClient(ctx, creds.TokenSource), nil
+}
+
+func convertPDFToPNG(ctx context.Context, pdfRaw []byte, dpi int, converter, tempDir string) ([]byte, error) {
+	pdfFile, err := os.CreateTemp(tempDir, "wf21-summary-*.pdf")
+	if err != nil {
+		return nil, fmt.Errorf("create temp pdf file: %w", err)
+	}
+	pdfPath := pdfFile.Name()
+	defer os.Remove(pdfPath)
+
+	if _, err = pdfFile.Write(pdfRaw); err != nil {
+		pdfFile.Close()
+		return nil, fmt.Errorf("write temp pdf file: %w", err)
+	}
+	if err = pdfFile.Close(); err != nil {
+		return nil, fmt.Errorf("close temp pdf file: %w", err)
+	}
+
+	resolved, err := resolvePDFConverter(converter)
+	if err != nil {
+		return nil, err
+	}
+
+	var pngPath string
+	switch resolved {
+	case "pdftoppm":
+		outputPrefix := strings.TrimSuffix(pdfPath, ".pdf") + "-page"
+		pngPath = outputPrefix + ".png"
+		cmd := exec.CommandContext(
+			ctx,
+			"pdftoppm",
+			"-png",
+			"-f",
+			"1",
+			"-singlefile",
+			"-rx",
+			strconv.Itoa(dpi),
+			"-ry",
+			strconv.Itoa(dpi),
+			pdfPath,
+			outputPrefix,
+		)
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil {
+			return nil, fmt.Errorf("pdftoppm convert failed: %w output=%s", runErr, strings.TrimSpace(string(out)))
+		}
+	case "magick":
+		pngPath = strings.TrimSuffix(pdfPath, ".pdf") + ".png"
+		cmd := exec.CommandContext(
+			ctx,
+			"magick",
+			"-density",
+			strconv.Itoa(dpi),
+			pdfPath+"[0]",
+			"-quality",
+			"100",
+			pngPath,
+		)
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil {
+			return nil, fmt.Errorf("magick convert failed: %w output=%s", runErr, strings.TrimSpace(string(out)))
+		}
+	default:
+		return nil, fmt.Errorf("unsupported pdf converter %q", resolved)
+	}
+	defer os.Remove(pngPath)
+
+	pngRaw, err := os.ReadFile(pngPath)
+	if err != nil {
+		return nil, fmt.Errorf("read converted png file: %w", err)
+	}
+	return pngRaw, nil
+}
+
+func resolvePDFConverter(preferred string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(preferred)) {
+	case "", "auto":
+		if _, err := exec.LookPath("pdftoppm"); err == nil {
+			return "pdftoppm", nil
+		}
+		if _, err := exec.LookPath("magick"); err == nil {
+			return "magick", nil
+		}
+		return "", errors.New("pdf_png render mode requires either pdftoppm (Poppler) or magick (ImageMagick) installed")
+	case "pdftoppm":
+		if _, err := exec.LookPath("pdftoppm"); err != nil {
+			return "", errors.New("WF21_SUMMARY_PDF_CONVERTER=pdftoppm but pdftoppm is not installed")
+		}
+		return "pdftoppm", nil
+	case "magick":
+		if _, err := exec.LookPath("magick"); err != nil {
+			return "", errors.New("WF21_SUMMARY_PDF_CONVERTER=magick but ImageMagick (magick) is not installed")
+		}
+		return "magick", nil
+	default:
+		return "", fmt.Errorf("unsupported pdf converter %q", preferred)
+	}
 }
 
 func readConnectedStyledRanges(

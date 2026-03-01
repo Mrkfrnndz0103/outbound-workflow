@@ -83,7 +83,7 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /healthz
-    buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
+    buildCommand: apt-get update && apt-get install -y --no-install-recommends poppler-utils imagemagick && go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
     startCommand: ./bin/workflow-drive-csv-consolidation
     envVars:
       - key: WF21_GOOGLE_CREDENTIALS_FILE
@@ -92,8 +92,12 @@ services:
         value: 1oU9kj5VIJIoNrR388wYCHSdtHGanRrgZ
       - key: WF21_DESTINATION_SHEET_ID
         value: 1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA
-      - key: WF21_DESTINATION_TAB
-        value: generated_file
+      - key: WF21_DESTINATION_TAB_PENDING_RCV
+        value: pending_rcv
+      - key: WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO
+        value: packed_in_another_to
+      - key: WF21_DESTINATION_TAB_NO_LHPACKING
+        value: no_lhpacking
       - key: WF21_R2_OBJECT_PREFIX
         value: wf2-1
       - key: WF21_STATE_FILE
@@ -115,7 +119,13 @@ services:
       - key: WF21_POLL_INTERVAL_SECONDS
         value: "30"
       - key: WF21_SHEETS_BATCH_SIZE
-        value: "5000"
+        value: "7000"
+      - key: WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS
+        value: "6"
+      - key: WF21_SHEETS_WRITE_RETRY_BASE_MS
+        value: "1000"
+      - key: WF21_SHEETS_WRITE_RETRY_MAX_MS
+        value: "15000"
       - key: WF21_TEMP_DIR
         value: ""
       - key: WF21_SUMMARY_SEND_ENABLED
@@ -132,8 +142,16 @@ services:
         value: "3"
       - key: WF21_SUMMARY_STABILITY_WAIT_SECONDS
         value: "2"
+      - key: WF21_SUMMARY_RENDER_MODE
+        value: pdf_png
       - key: WF21_SUMMARY_RENDER_SCALE
         value: "2"
+      - key: WF21_SUMMARY_AUTO_FIT_COLUMNS
+        value: "false"
+      - key: WF21_SUMMARY_PDF_DPI
+        value: "180"
+      - key: WF21_SUMMARY_PDF_CONVERTER
+        value: auto
       - key: WF21_SUMMARY_IMAGE_MAX_WIDTH_PX
         value: "3000"
       - key: WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES

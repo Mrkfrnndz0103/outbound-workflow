@@ -118,12 +118,21 @@ Imported output columns (in order):
 - `WF21_SUMMARY_WAIT_SECONDS` (default `8`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
+- `WF21_SUMMARY_RENDER_MODE` (default `styled`; `pdf_png` uses Google Sheets PDF export -> PNG conversion for closer visual fidelity)
 - `WF21_SUMMARY_RENDER_SCALE` (default `2`)
 - `WF21_SUMMARY_AUTO_FIT_COLUMNS` (default `false`; set `false` to preserve sheet layout, `true` to auto-resize columns for long text)
+- `WF21_SUMMARY_PDF_DPI` (default `180`; used when `WF21_SUMMARY_RENDER_MODE=pdf_png`)
+- `WF21_SUMMARY_PDF_CONVERTER` (default `auto`; `auto|pdftoppm|magick`, used when `WF21_SUMMARY_RENDER_MODE=pdf_png`)
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)
 - `WF21_TIMEZONE` (default `Asia/Manila`; used for summary caption timestamp)
+
+PDF mode dependency note:
+
+- `WF21_SUMMARY_RENDER_MODE=pdf_png` requires either:
+  - Poppler (`pdftoppm` in PATH), or
+  - ImageMagick (`magick` in PATH)
 
 ## Render note for plans without worker service type
 

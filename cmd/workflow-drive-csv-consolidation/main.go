@@ -58,8 +58,11 @@ const (
 	defaultSummaryWaitAfterImport = 8 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
+	defaultSummaryRenderMode      = "styled"
 	defaultSummaryRenderScale     = 2
 	defaultSummaryAutoFitColumns  = false
+	defaultSummaryPDFDPI          = 180
+	defaultSummaryPDFConverter    = "auto"
 	defaultSummaryImageMaxWidthPx = 3000
 	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
 	defaultSummaryHTTPTimeout     = 10 * time.Second
@@ -130,8 +133,11 @@ type workflowConfig struct {
 	SummaryWaitAfterImport time.Duration
 	SummaryStabilityWait   time.Duration
 	SummaryStabilityRuns   int
+	SummaryRenderMode      string
 	SummaryRenderScale     int
 	SummaryAutoFitColumns  bool
+	SummaryPDFDPI          int
+	SummaryPDFConverter    string
 	SummaryImageMaxWidthPx int
 	SummaryImageMaxBase64  int
 	SummarySendHTTPTimeout time.Duration
@@ -259,7 +265,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_scale=%d auto_fit_columns=%t timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -270,8 +276,11 @@ func main() {
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
+			cfg.SummaryRenderMode,
 			cfg.SummaryRenderScale,
 			cfg.SummaryAutoFitColumns,
+			cfg.SummaryPDFDPI,
+			cfg.SummaryPDFConverter,
 			cfg.SummaryTimezone,
 		)
 	}
@@ -885,8 +894,11 @@ func loadConfig() (workflowConfig, error) {
 		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
 		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),
+		SummaryRenderMode:      strings.ToLower(strings.TrimSpace(firstNonEmpty(os.Getenv("WF21_SUMMARY_RENDER_MODE"), defaultSummaryRenderMode))),
 		SummaryRenderScale:     getIntEnv("WF21_SUMMARY_RENDER_SCALE", defaultSummaryRenderScale),
 		SummaryAutoFitColumns:  summaryAutoFitColumns,
+		SummaryPDFDPI:          getIntEnv("WF21_SUMMARY_PDF_DPI", defaultSummaryPDFDPI),
+		SummaryPDFConverter:    strings.ToLower(strings.TrimSpace(firstNonEmpty(os.Getenv("WF21_SUMMARY_PDF_CONVERTER"), defaultSummaryPDFConverter))),
 		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
 		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
@@ -950,11 +962,29 @@ func loadConfig() (workflowConfig, error) {
 	if cfg.SummaryStabilityRuns < 1 {
 		cfg.SummaryStabilityRuns = 1
 	}
+	switch cfg.SummaryRenderMode {
+	case "styled", "pdf_png":
+	default:
+		return workflowConfig{}, fmt.Errorf("WF21_SUMMARY_RENDER_MODE must be one of: styled, pdf_png (got %q)", cfg.SummaryRenderMode)
+	}
 	if cfg.SummaryRenderScale < 1 {
 		cfg.SummaryRenderScale = 1
 	}
 	if cfg.SummaryRenderScale > 4 {
 		cfg.SummaryRenderScale = 4
+	}
+	if cfg.SummaryPDFDPI < 72 {
+		cfg.SummaryPDFDPI = 72
+	}
+	if cfg.SummaryPDFDPI > 600 {
+		cfg.SummaryPDFDPI = 600
+	}
+	switch cfg.SummaryPDFConverter {
+	case "", "auto":
+		cfg.SummaryPDFConverter = "auto"
+	case "pdftoppm", "magick":
+	default:
+		return workflowConfig{}, fmt.Errorf("WF21_SUMMARY_PDF_CONVERTER must be one of: auto, pdftoppm, magick (got %q)", cfg.SummaryPDFConverter)
 	}
 	if cfg.SummaryImageMaxWidthPx < 1200 {
 		cfg.SummaryImageMaxWidthPx = 1200
