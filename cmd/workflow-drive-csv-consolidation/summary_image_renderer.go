@@ -150,10 +150,11 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	}
 	result.Format = imageFmt
 	result.RawBytes = imageBytes
+	captionTS := currentSummaryCaptionTime(cfg, time.Now())
 
 	if cfg.SummarySeaTalkMode == "webhook" {
 		sender := seatalk.NewSystemAccountClient(cfg.SummaryWebhookURL, cfg.SummarySendHTTPTimeout)
-		if err = sender.SendTextWithAtAll(ctx, buildSummaryCaption(time.Now().Local()), 1, true); err != nil {
+		if err = sender.SendTextWithAtAll(ctx, buildSummaryCaption(captionTS), 1, true); err != nil {
 			return result, fmt.Errorf("send summary caption to seatalk webhook: %w", err)
 		}
 		if err = sender.SendImageBase64(ctx, base64Image); err != nil {
@@ -168,13 +169,26 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		BaseURL:   cfg.SummarySeaTalkBaseURL,
 		Timeout:   cfg.SummarySendHTTPTimeout,
 	})
-	if err = sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(time.Now().Local()), 1); err != nil {
+	if err = sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(captionTS), 1); err != nil {
 		return result, fmt.Errorf("send summary caption to seatalk bot: %w", err)
 	}
 	if err = sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, base64Image); err != nil {
 		return result, fmt.Errorf("send summary image to seatalk bot: %w", err)
 	}
 	return result, nil
+}
+
+func currentSummaryCaptionTime(cfg workflowConfig, now time.Time) time.Time {
+	if cfg.SummaryLocation != nil {
+		return now.In(cfg.SummaryLocation)
+	}
+	tz := strings.TrimSpace(cfg.SummaryTimezone)
+	if tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			return now.In(loc)
+		}
+	}
+	return now.Local()
 }
 
 func buildSummaryCaption(ts time.Time) string {

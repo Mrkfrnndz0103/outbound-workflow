@@ -53,6 +53,7 @@ const (
 	defaultSummaryImageMaxWidthPx = 3000
 	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
 	defaultSummaryHTTPTimeout     = 10 * time.Second
+	defaultSummaryTimezone        = "Asia/Manila"
 )
 
 var selectedOutputHeaders = []string{
@@ -115,6 +116,8 @@ type workflowConfig struct {
 	SummaryImageMaxWidthPx int
 	SummaryImageMaxBase64  int
 	SummarySendHTTPTimeout time.Duration
+	SummaryTimezone        string
+	SummaryLocation        *time.Location
 }
 
 type workflowState struct {
@@ -228,7 +231,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s wait_after_import=%s stability_runs=%d stability_wait=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s wait_after_import=%s stability_runs=%d stability_wait=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -236,6 +239,7 @@ func main() {
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
+			cfg.SummaryTimezone,
 		)
 	}
 
@@ -707,6 +711,15 @@ func loadConfig() (workflowConfig, error) {
 		os.Getenv("WF21_SEATALK_WEBHOOK_URL"),
 		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
 	))
+	summaryTimezone := firstNonEmpty(
+		strings.TrimSpace(os.Getenv("WF21_TIMEZONE")),
+		strings.TrimSpace(os.Getenv("WF2_TIMEZONE")),
+		defaultSummaryTimezone,
+	)
+	summaryLocation, err := time.LoadLocation(summaryTimezone)
+	if err != nil {
+		return workflowConfig{}, fmt.Errorf("invalid WF21_TIMEZONE %q: %w", summaryTimezone, err)
+	}
 
 	cfg := workflowConfig{
 		GoogleCredentialsFile:    credsFile,
@@ -756,6 +769,8 @@ func loadConfig() (workflowConfig, error) {
 		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
 		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
+		SummaryTimezone:        summaryTimezone,
+		SummaryLocation:        summaryLocation,
 	}
 
 	if cfg.PollInterval < 5*time.Second {

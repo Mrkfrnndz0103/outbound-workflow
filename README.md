@@ -355,6 +355,7 @@ Optional env:
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)
+- `WF21_TIMEZONE` (default `Asia/Manila`; used for caption timestamp like `Outbound Pending for Dispatch as of ...`)
 
 Run one-shot locally:
 
@@ -374,6 +375,21 @@ Use the included `render.yaml` blueprint to deploy as a web service.
    - `WF1_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
 4. After first deploy, set:
    - `WF1_SELF_PING_URL=https://<your-render-service>.onrender.com/healthz`
+
+### Render env reference file
+
+- Generated file: `docs/render-env.md`
+- Regenerate locally:
+
+```powershell
+go run ./scripts/generate_render_env_doc.go
+```
+
+- Auto-update via Cloudflare Worker webhook:
+  - Worker project: `cloudflare/render-env-sync`
+  - Endpoint: `POST /github-webhook`
+  - It regenerates and commits `docs/render-env.md` when relevant files change.
+  - Setup guide: `cloudflare/render-env-sync/README.md`
 
 The service exposes:
 

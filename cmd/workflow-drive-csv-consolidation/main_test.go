@@ -123,6 +123,25 @@ func TestBuildSummaryCaptionForBot(t *testing.T) {
 	}
 }
 
+func TestCurrentSummaryCaptionTimeUsesConfiguredLocation(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Manila")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	cfg := workflowConfig{
+		SummaryTimezone: "Asia/Manila",
+		SummaryLocation: loc,
+	}
+	nowUTC := time.Date(2026, 3, 1, 10, 29, 0, 0, time.UTC)
+	got := currentSummaryCaptionTime(cfg, nowUTC)
+	if got.Location().String() != "Asia/Manila" {
+		t.Fatalf("unexpected location: %s", got.Location())
+	}
+	if got.Format("3:04 PM Jan-02") != "6:29 PM Mar-01" {
+		t.Fatalf("unexpected converted time: %s", got.Format("3:04 PM Jan-02"))
+	}
+}
+
 func TestClampRenderedFontSize(t *testing.T) {
 	if got := clampRenderedFontSize(1.5); got != minRenderedFontSize {
 		t.Fatalf("expected min clamp %v, got %v", minRenderedFontSize, got)

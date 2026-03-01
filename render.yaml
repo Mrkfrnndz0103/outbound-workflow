@@ -58,6 +58,7 @@ services:
         sync: false
       - key: WF1_GOOGLE_CREDENTIALS_JSON
         sync: false
+      # Optional per-environment URL; keep unmanaged unless you want Blueprint to overwrite it.
       - key: WF1_SELF_PING_URL
         sync: false
 
@@ -124,6 +125,9 @@ services:
         value: "5242880"
       - key: WF21_SUMMARY_HTTP_TIMEOUT_SECONDS
         value: "10"
+      - key: WF21_TIMEZONE
+        value: Asia/Manila
+      # Secrets below stay unmanaged (set manually in Render or via API/CI secret sync).
       - key: WF21_GOOGLE_CREDENTIALS_JSON
         sync: false
       - key: WF21_R2_ACCOUNT_ID

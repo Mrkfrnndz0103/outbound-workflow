@@ -113,6 +113,7 @@ Imported output columns (in order):
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
 - `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)
+- `WF21_TIMEZONE` (default `Asia/Manila`; used for summary caption timestamp)
 
 ## Render note for plans without worker service type
 

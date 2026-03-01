@@ -20,6 +20,8 @@ dist/
 *.exe
 *.test
 *.out
+node_modules/
+.wrangler/
 
 # Temp work dirs
 _tmp_cs_bot_src/
