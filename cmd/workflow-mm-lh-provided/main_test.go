@@ -190,7 +190,7 @@ func TestBaselineDoesNotResendOnNextCycle(t *testing.T) {
 		},
 	}
 
-	first := processRows(context.Background(), cfg, &http.Client{}, rows, state, false, logger)
+	first := processRows(context.Background(), cfg, &http.Client{}, nil, rows, state, false, logger)
 	if first.Sent != 0 {
 		t.Fatalf("expected no sends on baseline cycle, got sent=%d", first.Sent)
 	}
@@ -198,7 +198,7 @@ func TestBaselineDoesNotResendOnNextCycle(t *testing.T) {
 		t.Fatalf("expected baseline to mark row as sent for current plate, got %q", state.RowSentForPlate["427"])
 	}
 
-	second := processRows(context.Background(), cfg, &http.Client{}, rows, state, true, logger)
+	second := processRows(context.Background(), cfg, &http.Client{}, nil, rows, state, true, logger)
 	if second.Sent != 0 {
 		t.Fatalf("expected no resend on next cycle, got sent=%d", second.Sent)
 	}
@@ -247,5 +247,17 @@ func TestIsProvideTimePastAge(t *testing.T) {
 	}
 	if !isProvideTimePastAge("not-a-time", 0, now) {
 		t.Fatalf("expected minAge<=0 to disable provide-time age filter")
+	}
+}
+
+func TestSendSeaTalkTextByBotAtAllPrefix(t *testing.T) {
+	content := "Double Request!\nCluster A"
+	cfg := workflowConfig{
+		SeaTalkMode:    "bot",
+		SeaTalkGroupID: "group-x",
+	}
+	err := sendSeaTalkText(context.Background(), &http.Client{}, nil, cfg, content, true)
+	if err == nil {
+		t.Fatalf("expected nil bot client error")
 	}
 }

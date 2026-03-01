@@ -78,7 +78,8 @@ const SKIP_TOKEN = "[skip-render-env-sync]";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname !== "/" && url.pathname !== "/github-webhook") {
+    const path = normalizePath(url.pathname);
+    if (path !== "/" && path !== "/github-webhook") {
       return new Response("Not Found", { status: 404 });
     }
 
@@ -141,6 +142,16 @@ export default {
     }
   },
 };
+
+function normalizePath(pathname: string): string {
+  if (!pathname) {
+    return "/";
+  }
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.slice(0, -1);
+  }
+  return pathname;
+}
 
 async function syncRenderEnvDoc(env: Env, commitSha: string): Promise<string> {
   const tree = await getRecursiveTree(env, commitSha);

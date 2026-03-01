@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/spxph4227/go-bot-server/internal/seatalk"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -32,6 +33,7 @@ const (
 	defaultStatusFile   = "data/workflow1-mm-lh-provided-status.json"
 	defaultHTTPTimeout  = 10 * time.Second
 	defaultTextFormat   = 1
+	defaultSeaTalkMode  = "webhook"
 	systemAccountOKCode = 0
 )
 
@@ -41,6 +43,11 @@ type workflowConfig struct {
 	SheetRange            string
 	GoogleCredentialsFile string
 	GoogleCredentialsJSON string
+	SeaTalkMode           string
+	SeaTalkGroupID        string
+	SeaTalkAppID          string
+	SeaTalkAppSecret      string
+	SeaTalkBaseURL        string
 	SeaTalkWebhookURL     string
 	StateFile             string
 	StatusFile            string
@@ -153,6 +160,15 @@ func main() {
 	}
 
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
+	var seaTalkBotClient *seatalk.Client
+	if cfg.SeaTalkMode == "bot" {
+		seaTalkBotClient = seatalk.NewClient(seatalk.ClientConfig{
+			AppID:     cfg.SeaTalkAppID,
+			AppSecret: cfg.SeaTalkAppSecret,
+			BaseURL:   cfg.SeaTalkBaseURL,
+			Timeout:   cfg.HTTPTimeout,
+		})
+	}
 
 	runCycle := func(ctx context.Context, cycle int) error {
 		cycleAt := time.Now().UTC()
@@ -161,7 +177,7 @@ func main() {
 			return loadErr
 		}
 
-		summary := processRows(ctx, cfg, httpClient, rows, state, stateExists, logger)
+		summary := processRows(ctx, cfg, httpClient, seaTalkBotClient, rows, state, stateExists, logger)
 		if err = saveState(cfg.StateFile, state); err != nil {
 			return err
 		}
@@ -242,7 +258,7 @@ func main() {
 		return
 	}
 
-	logger.Printf("watch mode enabled poll_interval=%s", cfg.PollInterval)
+	logger.Printf("watch mode enabled poll_interval=%s seatalk_mode=%s", cfg.PollInterval, cfg.SeaTalkMode)
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if cfg.EnableHealthServer {
@@ -322,9 +338,47 @@ func loadConfig() (workflowConfig, error) {
 		return workflowConfig{}, errors.New("set WF1_GOOGLE_CREDENTIALS_FILE/GOOGLE_APPLICATION_CREDENTIALS or WF1_GOOGLE_CREDENTIALS_JSON")
 	}
 
-	webhook := strings.TrimSpace(os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"))
-	if webhook == "" {
-		return workflowConfig{}, errors.New("SEATALK_SYSTEM_WEBHOOK_URL is required")
+	seaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_MODE"),
+		defaultSeaTalkMode,
+	)))
+	seaTalkGroupID := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_GROUP_ID"),
+		os.Getenv("WF2_SEATALK_GROUP_ID"),
+	))
+	seaTalkAppID := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_APP_ID"),
+		os.Getenv("WF2_SEATALK_APP_ID"),
+		os.Getenv("SEATALK_APP_ID"),
+	))
+	seaTalkAppSecret := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_APP_SECRET"),
+		os.Getenv("WF2_SEATALK_APP_SECRET"),
+		os.Getenv("SEATALK_APP_SECRET"),
+	))
+	seaTalkBaseURL := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_BASE_URL"),
+		os.Getenv("SEATALK_BASE_URL"),
+		"https://openapi.seatalk.io",
+	))
+	seaTalkWebhookURL := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF1_SEATALK_WEBHOOK_URL"),
+		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
+	))
+	switch seaTalkMode {
+	case "webhook":
+		if seaTalkWebhookURL == "" {
+			return workflowConfig{}, errors.New("WF1_SEATALK_WEBHOOK_URL or SEATALK_SYSTEM_WEBHOOK_URL is required when WF1_SEATALK_MODE=webhook")
+		}
+	case "bot":
+		if seaTalkGroupID == "" {
+			return workflowConfig{}, errors.New("WF1_SEATALK_GROUP_ID (or WF2_SEATALK_GROUP_ID fallback) is required when WF1_SEATALK_MODE=bot")
+		}
+		if seaTalkAppID == "" || seaTalkAppSecret == "" {
+			return workflowConfig{}, errors.New("WF1_SEATALK_APP_ID/WF1_SEATALK_APP_SECRET (or WF2_/SEATALK_ fallbacks) are required when WF1_SEATALK_MODE=bot")
+		}
+	default:
+		return workflowConfig{}, fmt.Errorf("WF1_SEATALK_MODE must be one of: webhook, bot (got %q)", seaTalkMode)
 	}
 	statusFile := strings.TrimSpace(os.Getenv("WF1_STATUS_FILE"))
 	switch strings.ToLower(statusFile) {
@@ -346,7 +400,12 @@ func loadConfig() (workflowConfig, error) {
 		SheetRange:            firstNonEmpty(strings.TrimSpace(os.Getenv("WF1_SHEET_RANGE")), defaultSheetRange),
 		GoogleCredentialsFile: credsFile,
 		GoogleCredentialsJSON: credsJSON,
-		SeaTalkWebhookURL:     webhook,
+		SeaTalkMode:           seaTalkMode,
+		SeaTalkGroupID:        seaTalkGroupID,
+		SeaTalkAppID:          seaTalkAppID,
+		SeaTalkAppSecret:      seaTalkAppSecret,
+		SeaTalkBaseURL:        seaTalkBaseURL,
+		SeaTalkWebhookURL:     seaTalkWebhookURL,
 		StateFile:             firstNonEmpty(strings.TrimSpace(os.Getenv("WF1_STATE_FILE")), defaultStateFile),
 		StatusFile:            statusFile,
 		EnableHealthServer:    enableHealthServer,
@@ -457,6 +516,7 @@ func processRows(
 	ctx context.Context,
 	cfg workflowConfig,
 	httpClient *http.Client,
+	seaTalkBotClient *seatalk.Client,
 	rows []sheetRow,
 	state workflowState,
 	stateExists bool,
@@ -593,7 +653,7 @@ func processRows(
 		})
 	}
 
-	dispatchCandidates(ctx, cfg, httpClient, candidates, &summary, state, logger)
+	dispatchCandidates(ctx, cfg, httpClient, seaTalkBotClient, candidates, &summary, state, logger)
 	return summary
 }
 
@@ -601,6 +661,7 @@ func dispatchCandidates(
 	ctx context.Context,
 	cfg workflowConfig,
 	httpClient *http.Client,
+	seaTalkBotClient *seatalk.Client,
 	candidates []sendCandidate,
 	summary *processSummary,
 	state workflowState,
@@ -623,7 +684,7 @@ func dispatchCandidates(
 			}
 		}
 		lastSendAttemptAt = time.Now()
-		return sendSeaTalkTextWithRetry(ctx, httpClient, cfg, content, atAll, meta, logger)
+		return sendSeaTalkTextWithRetry(ctx, httpClient, seaTalkBotClient, cfg, content, atAll, meta, logger)
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -1098,12 +1159,17 @@ func isRateLimitError(err error) bool {
 	if errors.As(err, &apiErr) {
 		return apiErr.Code == 8
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "rate limit")
+	low := strings.ToLower(err.Error())
+	if strings.Contains(low, "rate limit") {
+		return true
+	}
+	return strings.Contains(low, "code=8") || strings.Contains(low, "status=429")
 }
 
 func sendSeaTalkTextWithRetry(
 	ctx context.Context,
 	client *http.Client,
+	seaTalkBotClient *seatalk.Client,
 	cfg workflowConfig,
 	content string,
 	atAll bool,
@@ -1125,7 +1191,7 @@ func sendSeaTalkTextWithRetry(
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		lastErr = sendSeaTalkText(ctx, client, cfg.SeaTalkWebhookURL, content, atAll)
+		lastErr = sendSeaTalkText(ctx, client, seaTalkBotClient, cfg, content, atAll)
 		if lastErr == nil {
 			return nil
 		}
@@ -1155,7 +1221,32 @@ func sendSeaTalkTextWithRetry(
 	return lastErr
 }
 
-func sendSeaTalkText(ctx context.Context, client *http.Client, webhookURL, content string, atAll bool) error {
+func sendSeaTalkText(
+	ctx context.Context,
+	client *http.Client,
+	seaTalkBotClient *seatalk.Client,
+	cfg workflowConfig,
+	content string,
+	atAll bool,
+) error {
+	if cfg.SeaTalkMode == "bot" {
+		return sendSeaTalkTextByBot(ctx, seaTalkBotClient, cfg.SeaTalkGroupID, content, atAll)
+	}
+	return sendSeaTalkTextByWebhook(ctx, client, cfg.SeaTalkWebhookURL, content, atAll)
+}
+
+func sendSeaTalkTextByBot(ctx context.Context, client *seatalk.Client, groupID, content string, atAll bool) error {
+	if client == nil {
+		return errors.New("seatalk bot client is nil")
+	}
+	message := strings.TrimSpace(content)
+	if atAll && !strings.Contains(message, "seatalk://user?id=0") {
+		message = "<mention-tag target=\"seatalk://user?id=0\"/> " + message
+	}
+	return client.SendTextToGroup(ctx, groupID, message, defaultTextFormat)
+}
+
+func sendSeaTalkTextByWebhook(ctx context.Context, client *http.Client, webhookURL, content string, atAll bool) error {
 	textBody := map[string]any{
 		"format":  defaultTextFormat,
 		"content": content,

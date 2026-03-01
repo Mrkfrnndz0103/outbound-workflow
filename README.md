@@ -161,7 +161,12 @@ Provided Time: {I minute}  # e.g. 2/25/2026 12:25 PM
 
 Required env for this workflow:
 
-- `SEATALK_SYSTEM_WEBHOOK_URL`
+- `WF1_SEATALK_MODE` (`webhook` or `bot`; default `webhook`)
+- If `WF1_SEATALK_MODE=webhook`:
+  - `WF1_SEATALK_WEBHOOK_URL` (fallback `SEATALK_SYSTEM_WEBHOOK_URL`)
+- If `WF1_SEATALK_MODE=bot`:
+  - `WF1_SEATALK_GROUP_ID` (fallback `WF2_SEATALK_GROUP_ID`)
+  - `WF1_SEATALK_APP_ID` / `WF1_SEATALK_APP_SECRET` (fallbacks: `WF2_*`, then global `SEATALK_*`)
 - Google credentials via one of:
   - `WF1_GOOGLE_CREDENTIALS_FILE` (or `GOOGLE_APPLICATION_CREDENTIALS`)
   - `WF1_GOOGLE_CREDENTIALS_JSON`
@@ -184,6 +189,7 @@ Optional env:
 - `WF1_SEND_RETRY_MAX_ATTEMPTS` (default `5`)
 - `WF1_SEND_RETRY_BASE_MS` (default `1000`)
 - `WF1_SEND_RETRY_MAX_MS` (default `30000`)
+- `WF1_SEATALK_BASE_URL` (default `https://openapi.seatalk.io`)
 - `WF1_ENABLE_HEALTH_SERVER` (default `false`)
 - `WF1_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 - `WF1_SELF_PING_URL` (optional; set to your public `/healthz` URL)
@@ -206,7 +212,7 @@ Send rule:
 - Stale-ready safeguard: rows that stay unsent longer than `WF1_MAX_READY_AGE_SECONDS` are skipped to avoid replaying old backlog when webhook recovers.
 - Force send: if `F` is already filled but `H/I` stay missing for 5 minutes, send once anyway.
 - Special case: if `F` contains `DOUBLE` or `DOUBLE REQUEST`, send:
-  `Double Request!` + `{C} - {M}` and force `@All` mention via `at_all=true`.
+  `Double Request!` + `{C} - {M}` and force `@All` mention.
 - Outbound sends are throttled/retried to handle SeaTalk rate limits (`429`, code `8`).
 
 Status output:
