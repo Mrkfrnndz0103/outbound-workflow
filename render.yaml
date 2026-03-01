@@ -31,7 +31,7 @@ services:
       - key: WF1_SEND_RETRY_MAX_MS
         value: "30000"
       - key: WF1_BOOTSTRAP_SEND_EXISTING
-        value: "true"
+        value: "false"
       - key: WF1_AT_ALL
         value: "false"
       - key: WF1_DEBUG_LOG_SKIPS
