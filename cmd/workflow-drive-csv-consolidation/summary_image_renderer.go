@@ -484,6 +484,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 		renderScale = 1
 	}
 
+	mergeMap := buildMergeIndexMap(data.Rows, data.Cols, data.Merges)
 	colWidths := make([]int, data.Cols)
 	rowHeights := make([]int, data.Rows)
 	for c := 0; c < data.Cols; c++ {
@@ -493,6 +494,7 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 		}
 		colWidths[c] = maxInt(width*renderScale, 24)
 	}
+	colWidths = autoFitColumnWidths(data, colWidths, mergeMap, renderScale)
 	for r := 0; r < data.Rows; r++ {
 		height := 24
 		if r < len(data.RowHeights) && data.RowHeights[r] > 0 {
@@ -543,21 +545,6 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 	canvas := image.NewRGBA(image.Rect(0, 0, totalWidth, totalHeight))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{255, 255, 255, 255}}, image.Point{}, draw.Src)
 	borderScale := maxInt(int(math.Round(float64(renderScale)*layoutScale)), 1)
-
-	mergeMap := make([][]int, data.Rows)
-	for r := 0; r < data.Rows; r++ {
-		mergeMap[r] = make([]int, data.Cols)
-		for c := 0; c < data.Cols; c++ {
-			mergeMap[r][c] = -1
-		}
-	}
-	for idx, merge := range data.Merges {
-		for r := maxInt(merge.StartRow, 0); r < minInt(merge.EndRow, data.Rows); r++ {
-			for c := maxInt(merge.StartCol, 0); c < minInt(merge.EndCol, data.Cols); c++ {
-				mergeMap[r][c] = idx
-			}
-		}
-	}
 
 	drawnMergeBG := map[int]bool{}
 	for r := 0; r < data.Rows; r++ {
@@ -656,6 +643,127 @@ func renderStyledRangeImage(data styledRangeData, maxWidth int, renderScale int)
 		return nil, fmt.Errorf("encode png: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func buildMergeIndexMap(rows, cols int, merges []mergeRegion) [][]int {
+	mergeMap := make([][]int, rows)
+	for r := 0; r < rows; r++ {
+		mergeMap[r] = make([]int, cols)
+		for c := 0; c < cols; c++ {
+			mergeMap[r][c] = -1
+		}
+	}
+	for idx, merge := range merges {
+		for r := maxInt(merge.StartRow, 0); r < minInt(merge.EndRow, rows); r++ {
+			for c := maxInt(merge.StartCol, 0); c < minInt(merge.EndCol, cols); c++ {
+				mergeMap[r][c] = idx
+			}
+		}
+	}
+	return mergeMap
+}
+
+func autoFitColumnWidths(data styledRangeData, colWidths []int, mergeMap [][]int, renderScale int) []int {
+	if data.Rows <= 0 || data.Cols <= 0 || len(colWidths) == 0 {
+		return colWidths
+	}
+
+	textScale := float64(maxInt(renderScale, 1))
+	paddingX := maxInt(int(math.Round(4*textScale)), 4)
+	maxColWidth := maxInt(900*maxInt(renderScale, 1), 900)
+
+	for r := 0; r < data.Rows; r++ {
+		for c := 0; c < data.Cols; c++ {
+			mergeIdx := -1
+			if r < len(mergeMap) && c < len(mergeMap[r]) {
+				mergeIdx = mergeMap[r][c]
+			}
+
+			spanStartCol := c
+			spanEndCol := c + 1
+			if mergeIdx >= 0 {
+				merge := data.Merges[mergeIdx]
+				if r != merge.StartRow || c != merge.StartCol {
+					continue
+				}
+				spanStartCol = maxInt(merge.StartCol, 0)
+				spanEndCol = minInt(merge.EndCol, data.Cols)
+				if spanEndCol <= spanStartCol {
+					continue
+				}
+			}
+
+			cell := data.Cells[r][c]
+			targetWidth := measuredCellTextWidth(cell, renderScale)
+			if targetWidth <= 0 {
+				continue
+			}
+			targetWidth += paddingX * 2
+			targetWidth = minInt(targetWidth, maxColWidth)
+
+			colSpan := spanEndCol - spanStartCol
+			perColWidth := int(math.Ceil(float64(targetWidth) / float64(colSpan)))
+			for col := spanStartCol; col < spanEndCol; col++ {
+				if col >= 0 && col < len(colWidths) {
+					colWidths[col] = maxInt(colWidths[col], perColWidth)
+				}
+			}
+		}
+	}
+	return colWidths
+}
+
+func measuredCellTextWidth(cell styledCell, renderScale int) int {
+	text := strings.TrimSpace(cell.Text)
+	if text == "" {
+		return 0
+	}
+
+	fontSize := cell.FontSize
+	if fontSize <= 0 {
+		fontSize = 10
+	}
+	textScale := float64(maxInt(renderScale, 1))
+	face := loadFace(cell.FontFamily, cell.Bold, cell.Italic, fontSize*textScale)
+	if face == nil {
+		face = basicfont.Face7x13
+	}
+
+	if strings.EqualFold(cell.WrapStrategy, "WRAP") {
+		longestToken := longestTextToken(text)
+		if longestToken == "" {
+			return 0
+		}
+		return font.MeasureString(face, longestToken).Ceil()
+	}
+
+	return measureTextMaxLineWidth(face, text)
+}
+
+func longestTextToken(text string) string {
+	tokens := strings.Fields(strings.TrimSpace(text))
+	if len(tokens) == 0 {
+		return ""
+	}
+	longest := tokens[0]
+	for _, token := range tokens[1:] {
+		if len([]rune(token)) > len([]rune(longest)) {
+			longest = token
+		}
+	}
+	return longest
+}
+
+func measureTextMaxLineWidth(face font.Face, text string) int {
+	lines := strings.Split(text, "\n")
+	maxWidth := 0
+	for _, line := range lines {
+		width := font.MeasureString(face, line).Ceil()
+		if width > maxWidth {
+			maxWidth = width
+		}
+	}
+	return maxWidth
 }
 
 func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderScale int, layoutScale float64) {

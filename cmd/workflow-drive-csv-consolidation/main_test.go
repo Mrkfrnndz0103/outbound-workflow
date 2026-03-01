@@ -153,3 +153,54 @@ func TestClampRenderedFontSize(t *testing.T) {
 		t.Fatalf("expected unchanged font size 18, got %v", got)
 	}
 }
+
+func TestAutoFitColumnWidthsExpandsForLongText(t *testing.T) {
+	data := styledRangeData{
+		Rows: 1,
+		Cols: 1,
+		Cells: [][]styledCell{
+			{
+				{
+					Text:         "AUTO FIT THIS LONG TEXT VALUE",
+					FontSize:     10,
+					WrapStrategy: "CLIP",
+				},
+			},
+		},
+	}
+	mergeMap := buildMergeIndexMap(data.Rows, data.Cols, data.Merges)
+	widths := autoFitColumnWidths(data, []int{40}, mergeMap, 1)
+	if widths[0] <= 40 {
+		t.Fatalf("expected auto-fit to expand width, got %d", widths[0])
+	}
+}
+
+func TestAutoFitColumnWidthsDistributesMergedCellWidth(t *testing.T) {
+	data := styledRangeData{
+		Rows: 1,
+		Cols: 2,
+		Cells: [][]styledCell{
+			{
+				{
+					Text:         "MERGED CELL LONG TEXT",
+					FontSize:     10,
+					WrapStrategy: "CLIP",
+				},
+				defaultStyledCell(),
+			},
+		},
+		Merges: []mergeRegion{
+			{
+				StartRow: 0,
+				EndRow:   1,
+				StartCol: 0,
+				EndCol:   2,
+			},
+		},
+	}
+	mergeMap := buildMergeIndexMap(data.Rows, data.Cols, data.Merges)
+	widths := autoFitColumnWidths(data, []int{30, 30}, mergeMap, 1)
+	if widths[0] <= 30 || widths[1] <= 30 {
+		t.Fatalf("expected merged auto-fit to expand both columns, got %#v", widths)
+	}
+}
