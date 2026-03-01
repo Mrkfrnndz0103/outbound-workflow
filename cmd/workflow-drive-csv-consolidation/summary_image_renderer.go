@@ -121,6 +121,18 @@ type summaryImageSendResult struct {
 	RawBytes int
 }
 
+type encodedSummaryImage struct {
+	Label      string
+	Base64Data string
+	Format     string
+	RawBytes   int
+}
+
+type styledRangeSegment struct {
+	Bounds sheetRange
+	Data   styledRangeData
+}
+
 func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheetsSvc *sheets.Service) (summaryImageSendResult, error) {
 	var result summaryImageSendResult
 
@@ -136,20 +148,42 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	}
 	result.Stable = stable
 
-	styledRange, err := readStyledRange(ctx, sheetsSvc, cfg.SummarySheetID, cfg.SummaryTab, cfg.SummaryRange)
+	primaryImage, err := buildEncodedSummaryImage(
+		ctx,
+		sheetsSvc,
+		cfg.SummarySheetID,
+		cfg.SummaryTab,
+		cfg.SummaryRange,
+		cfg.SummaryImageMaxWidthPx,
+		cfg.SummaryRenderScale,
+		cfg.SummaryImageMaxBase64,
+		"primary",
+	)
 	if err != nil {
 		return result, err
 	}
-	pngRaw, err := renderStyledRangeImage(styledRange, cfg.SummaryImageMaxWidthPx, cfg.SummaryRenderScale)
-	if err != nil {
-		return result, err
+	images := []encodedSummaryImage{primaryImage}
+	result.Format = primaryImage.Format
+	result.RawBytes = primaryImage.RawBytes
+
+	if cfg.SummarySecondEnabled {
+		secondaryImage, secondaryErr := buildEncodedConnectedSummaryImage(
+			ctx,
+			sheetsSvc,
+			cfg.SummarySheetID,
+			cfg.SummarySecondTab,
+			cfg.SummarySecondRanges,
+			cfg.SummaryImageMaxWidthPx,
+			cfg.SummaryRenderScale,
+			cfg.SummaryImageMaxBase64,
+			"secondary",
+		)
+		if secondaryErr != nil {
+			return result, secondaryErr
+		}
+		images = append(images, secondaryImage)
 	}
-	base64Image, imageFmt, imageBytes, err := encodeImageWithinLimit(pngRaw, cfg.SummaryImageMaxBase64)
-	if err != nil {
-		return result, err
-	}
-	result.Format = imageFmt
-	result.RawBytes = imageBytes
+
 	captionTS := currentSummaryCaptionTime(cfg, time.Now())
 
 	if cfg.SummarySeaTalkMode == "webhook" {
@@ -157,8 +191,10 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		if err = sender.SendTextWithAtAll(ctx, buildSummaryCaption(captionTS), 1, true); err != nil {
 			return result, fmt.Errorf("send summary caption to seatalk webhook: %w", err)
 		}
-		if err = sender.SendImageBase64(ctx, base64Image); err != nil {
-			return result, fmt.Errorf("send summary image to seatalk webhook: %w", err)
+		for _, img := range images {
+			if err = sender.SendImageBase64(ctx, img.Base64Data); err != nil {
+				return result, fmt.Errorf("send %s summary image to seatalk webhook: %w", img.Label, err)
+			}
 		}
 		return result, nil
 	}
@@ -172,10 +208,188 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	if err = sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(captionTS), 1); err != nil {
 		return result, fmt.Errorf("send summary caption to seatalk bot: %w", err)
 	}
-	if err = sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, base64Image); err != nil {
-		return result, fmt.Errorf("send summary image to seatalk bot: %w", err)
+	for _, img := range images {
+		if err = sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data); err != nil {
+			return result, fmt.Errorf("send %s summary image to seatalk bot: %w", img.Label, err)
+		}
 	}
 	return result, nil
+}
+
+func buildEncodedSummaryImage(
+	ctx context.Context,
+	sheetsSvc *sheets.Service,
+	sheetID string,
+	tab string,
+	captureRange string,
+	maxWidthPx int,
+	renderScale int,
+	maxBase64Bytes int,
+	label string,
+) (encodedSummaryImage, error) {
+	styledRange, err := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	pngRaw, err := renderStyledRangeImage(styledRange, maxWidthPx, renderScale)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	base64Image, imageFmt, imageBytes, err := encodeImageWithinLimit(pngRaw, maxBase64Bytes)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	return encodedSummaryImage{
+		Label:      label,
+		Base64Data: base64Image,
+		Format:     imageFmt,
+		RawBytes:   imageBytes,
+	}, nil
+}
+
+func buildEncodedConnectedSummaryImage(
+	ctx context.Context,
+	sheetsSvc *sheets.Service,
+	sheetID string,
+	tab string,
+	ranges []string,
+	maxWidthPx int,
+	renderScale int,
+	maxBase64Bytes int,
+	label string,
+) (encodedSummaryImage, error) {
+	connectedData, err := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	pngRaw, err := renderStyledRangeImage(connectedData, maxWidthPx, renderScale)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	base64Image, imageFmt, imageBytes, err := encodeImageWithinLimit(pngRaw, maxBase64Bytes)
+	if err != nil {
+		return encodedSummaryImage{}, err
+	}
+	return encodedSummaryImage{
+		Label:      label,
+		Base64Data: base64Image,
+		Format:     imageFmt,
+		RawBytes:   imageBytes,
+	}, nil
+}
+
+func readConnectedStyledRanges(
+	ctx context.Context,
+	svc *sheets.Service,
+	sheetID string,
+	tab string,
+	ranges []string,
+) (styledRangeData, error) {
+	if len(ranges) == 0 {
+		return styledRangeData{}, errors.New("at least one range is required")
+	}
+
+	segments := make([]styledRangeSegment, 0, len(ranges))
+	for _, rawRange := range ranges {
+		rng := strings.TrimSpace(rawRange)
+		if rng == "" {
+			continue
+		}
+		parsed, err := parseA1Range(rng)
+		if err != nil {
+			return styledRangeData{}, err
+		}
+		data, err := readStyledRange(ctx, svc, sheetID, tab, rng)
+		if err != nil {
+			return styledRangeData{}, err
+		}
+		segments = append(segments, styledRangeSegment{
+			Bounds: parsed,
+			Data:   data,
+		})
+	}
+
+	return stitchStyledRangeSegments(segments)
+}
+
+func stitchStyledRangeSegments(segments []styledRangeSegment) (styledRangeData, error) {
+	if len(segments) == 0 {
+		return styledRangeData{}, errors.New("no styled range segments provided")
+	}
+
+	globalStartCol := segments[0].Bounds.startCol
+	globalEndCol := segments[0].Bounds.endCol
+	totalRows := 0
+	for _, segment := range segments {
+		if segment.Data.Rows <= 0 || segment.Data.Cols <= 0 {
+			continue
+		}
+		globalStartCol = minInt(globalStartCol, segment.Bounds.startCol)
+		globalEndCol = maxInt(globalEndCol, segment.Bounds.endCol)
+		totalRows += segment.Data.Rows
+	}
+	if totalRows <= 0 {
+		return styledRangeData{}, errors.New("no rows available from styled range segments")
+	}
+	totalCols := globalEndCol - globalStartCol + 1
+	if totalCols <= 0 {
+		return styledRangeData{}, errors.New("no columns available from styled range segments")
+	}
+
+	out := styledRangeData{
+		Rows:       totalRows,
+		Cols:       totalCols,
+		RowHeights: make([]int, totalRows),
+		ColWidths:  make([]int, totalCols),
+		Cells:      make([][]styledCell, totalRows),
+		Merges:     make([]mergeRegion, 0, 32),
+	}
+	for c := 0; c < totalCols; c++ {
+		out.ColWidths[c] = 100
+	}
+	for r := 0; r < totalRows; r++ {
+		out.RowHeights[r] = 24
+		out.Cells[r] = make([]styledCell, totalCols)
+		for c := 0; c < totalCols; c++ {
+			out.Cells[r][c] = defaultStyledCell()
+		}
+	}
+
+	rowOffset := 0
+	for _, segment := range segments {
+		if segment.Data.Rows <= 0 || segment.Data.Cols <= 0 {
+			continue
+		}
+		colOffset := segment.Bounds.startCol - globalStartCol
+		for c := 0; c < segment.Data.Cols && c < len(segment.Data.ColWidths); c++ {
+			globalCol := colOffset + c
+			if globalCol >= 0 && globalCol < len(out.ColWidths) {
+				out.ColWidths[globalCol] = maxInt(out.ColWidths[globalCol], segment.Data.ColWidths[c])
+			}
+		}
+		for r := 0; r < segment.Data.Rows && rowOffset+r < len(out.RowHeights); r++ {
+			if r < len(segment.Data.RowHeights) && segment.Data.RowHeights[r] > 0 {
+				out.RowHeights[rowOffset+r] = segment.Data.RowHeights[r]
+			}
+			for c := 0; c < segment.Data.Cols; c++ {
+				globalCol := colOffset + c
+				if globalCol >= 0 && globalCol < totalCols {
+					out.Cells[rowOffset+r][globalCol] = segment.Data.Cells[r][c]
+				}
+			}
+		}
+		for _, merge := range segment.Data.Merges {
+			out.Merges = append(out.Merges, mergeRegion{
+				StartRow: rowOffset + merge.StartRow,
+				EndRow:   rowOffset + merge.EndRow,
+				StartCol: colOffset + merge.StartCol,
+				EndCol:   colOffset + merge.EndCol,
+			})
+		}
+		rowOffset += segment.Data.Rows
+	}
+
+	return out, nil
 }
 
 func currentSummaryCaptionTime(cfg workflowConfig, now time.Time) time.Time {
@@ -670,7 +884,12 @@ func autoFitColumnWidths(data styledRangeData, colWidths []int, mergeMap [][]int
 
 	textScale := float64(maxInt(renderScale, 1))
 	paddingX := maxInt(int(math.Round(4*textScale)), 4)
+	minColWidth := maxInt(20*maxInt(renderScale, 1), 20)
 	maxColWidth := maxInt(900*maxInt(renderScale, 1), 900)
+	fitted := make([]int, data.Cols)
+	for c := 0; c < data.Cols; c++ {
+		fitted[c] = minColWidth
+	}
 
 	for r := 0; r < data.Rows; r++ {
 		for c := 0; c < data.Cols; c++ {
@@ -704,11 +923,15 @@ func autoFitColumnWidths(data styledRangeData, colWidths []int, mergeMap [][]int
 			colSpan := spanEndCol - spanStartCol
 			perColWidth := int(math.Ceil(float64(targetWidth) / float64(colSpan)))
 			for col := spanStartCol; col < spanEndCol; col++ {
-				if col >= 0 && col < len(colWidths) {
-					colWidths[col] = maxInt(colWidths[col], perColWidth)
+				if col >= 0 && col < len(fitted) {
+					fitted[col] = maxInt(fitted[col], perColWidth)
 				}
 			}
 		}
+	}
+
+	for c := 0; c < data.Cols && c < len(colWidths); c++ {
+		colWidths[c] = minInt(maxInt(fitted[c], minColWidth), maxColWidth)
 	}
 	return colWidths
 }

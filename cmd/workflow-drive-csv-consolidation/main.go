@@ -46,6 +46,8 @@ const (
 
 	defaultSummarySheetTab        = "[SOC] Backlogs Summary"
 	defaultSummaryRange           = "B2:Q59"
+	defaultSummarySecondTab       = "[SOC5] SOCPacked_Dashboard"
+	defaultSummarySecondRanges    = "A1:U9,B142:T167"
 	defaultSummaryWaitAfterImport = 8 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
@@ -109,6 +111,9 @@ type workflowConfig struct {
 	SummarySheetID         string
 	SummaryTab             string
 	SummaryRange           string
+	SummarySecondEnabled   bool
+	SummarySecondTab       string
+	SummarySecondRanges    []string
 	SummaryWaitAfterImport time.Duration
 	SummaryStabilityWait   time.Duration
 	SummaryStabilityRuns   int
@@ -231,11 +236,14 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s wait_after_import=%s stability_runs=%d stability_wait=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
 			cfg.SummaryRange,
+			cfg.SummarySecondEnabled,
+			cfg.SummarySecondTab,
+			strings.Join(cfg.SummarySecondRanges, ","),
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
@@ -653,6 +661,10 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	summarySecondEnabled, err := getBoolEnv("WF21_SUMMARY_SECOND_IMAGE_ENABLED", true)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summarySeaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SUMMARY_SEATALK_MODE"),
 		"bot",
@@ -716,6 +728,17 @@ func loadConfig() (workflowConfig, error) {
 		strings.TrimSpace(os.Getenv("WF2_TIMEZONE")),
 		defaultSummaryTimezone,
 	)
+	summarySecondTab := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SUMMARY_SECOND_TAB"),
+		defaultSummarySecondTab,
+	))
+	summarySecondRanges, err := parseSummaryRangeList(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SUMMARY_SECOND_RANGES"),
+		defaultSummarySecondRanges,
+	)))
+	if err != nil {
+		return workflowConfig{}, fmt.Errorf("invalid WF21_SUMMARY_SECOND_RANGES: %w", err)
+	}
 	summaryLocation, err := time.LoadLocation(summaryTimezone)
 	if err != nil {
 		return workflowConfig{}, fmt.Errorf("invalid WF21_TIMEZONE %q: %w", summaryTimezone, err)
@@ -762,6 +785,9 @@ func loadConfig() (workflowConfig, error) {
 			strings.TrimSpace(os.Getenv("WF21_SUMMARY_RANGE")),
 			defaultSummaryRange,
 		),
+		SummarySecondEnabled:   summarySecondEnabled,
+		SummarySecondTab:       summarySecondTab,
+		SummarySecondRanges:    summarySecondRanges,
 		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
 		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),
@@ -812,7 +838,41 @@ func loadConfig() (workflowConfig, error) {
 	if cfg.SummaryImageMaxBase64 < 512*1024 {
 		cfg.SummaryImageMaxBase64 = defaultSummaryImageMaxBase64
 	}
+	if cfg.SummarySecondEnabled {
+		if strings.TrimSpace(cfg.SummarySecondTab) == "" {
+			return workflowConfig{}, errors.New("WF21_SUMMARY_SECOND_TAB is required when WF21_SUMMARY_SECOND_IMAGE_ENABLED=true")
+		}
+		if len(cfg.SummarySecondRanges) == 0 {
+			return workflowConfig{}, errors.New("WF21_SUMMARY_SECOND_RANGES is required when WF21_SUMMARY_SECOND_IMAGE_ENABLED=true")
+		}
+	}
 	return cfg, nil
+}
+
+func parseSummaryRangeList(raw string) ([]string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	ranges := make([]string, 0, len(parts))
+	for _, part := range parts {
+		token := strings.TrimSpace(part)
+		if token == "" {
+			continue
+		}
+		// Allow optional tab prefix on first token (for convenience):
+		// "[SOC5] SOCPacked_Dashboard!A1:U9, B142:T167"
+		if bang := strings.Index(token, "!"); bang >= 0 {
+			token = strings.TrimSpace(token[bang+1:])
+		}
+		if _, err := parseA1Range(token); err != nil {
+			return nil, err
+		}
+		ranges = append(ranges, token)
+	}
+	return ranges, nil
 }
 
 func newGoogleServices(ctx context.Context, cfg workflowConfig) (*drive.Service, *sheets.Service, error) {

@@ -204,3 +204,112 @@ func TestAutoFitColumnWidthsDistributesMergedCellWidth(t *testing.T) {
 		t.Fatalf("expected merged auto-fit to expand both columns, got %#v", widths)
 	}
 }
+
+func TestAutoFitColumnWidthsShrinksOverwideColumns(t *testing.T) {
+	data := styledRangeData{
+		Rows: 1,
+		Cols: 2,
+		Cells: [][]styledCell{
+			{
+				{
+					Text:         "SOC",
+					FontSize:     10,
+					WrapStrategy: "CLIP",
+				},
+				{
+					Text:         "12",
+					FontSize:     10,
+					WrapStrategy: "CLIP",
+				},
+			},
+		},
+	}
+	mergeMap := buildMergeIndexMap(data.Rows, data.Cols, data.Merges)
+	widths := autoFitColumnWidths(data, []int{420, 380}, mergeMap, 1)
+	if widths[0] >= 420 || widths[1] >= 380 {
+		t.Fatalf("expected auto-fit to shrink overwide columns, got %#v", widths)
+	}
+}
+
+func TestParseSummaryRangeListWithOptionalTabPrefix(t *testing.T) {
+	ranges, err := parseSummaryRangeList("[SOC5] SOCPacked_Dashboard!A1:U9, B142:T167")
+	if err != nil {
+		t.Fatalf("parseSummaryRangeList error: %v", err)
+	}
+	if len(ranges) != 2 {
+		t.Fatalf("expected 2 ranges, got %d", len(ranges))
+	}
+	if ranges[0] != "A1:U9" || ranges[1] != "B142:T167" {
+		t.Fatalf("unexpected ranges: %#v", ranges)
+	}
+}
+
+func TestParseSummaryRangeListRejectsInvalidRange(t *testing.T) {
+	_, err := parseSummaryRangeList("A1")
+	if err == nil {
+		t.Fatalf("expected parseSummaryRangeList to fail for invalid A1 range")
+	}
+}
+
+func TestStitchStyledRangeSegmentsStacksAndAlignsColumns(t *testing.T) {
+	seg1 := styledRangeSegment{
+		Bounds: sheetRange{startCol: 1, endCol: 3, startRow: 1, endRow: 1},
+		Data: styledRangeData{
+			Rows:       1,
+			Cols:       3,
+			RowHeights: []int{30},
+			ColWidths:  []int{120, 130, 140},
+			Cells: [][]styledCell{
+				{
+					{Text: "top-a"},
+					{Text: "top-b"},
+					{Text: "top-c"},
+				},
+			},
+		},
+	}
+	seg2 := styledRangeSegment{
+		Bounds: sheetRange{startCol: 2, endCol: 4, startRow: 142, endRow: 143},
+		Data: styledRangeData{
+			Rows:       2,
+			Cols:       3,
+			RowHeights: []int{24, 26},
+			ColWidths:  []int{150, 160, 170},
+			Cells: [][]styledCell{
+				{
+					{Text: "body-b1"},
+					{Text: "body-c1"},
+					{Text: "body-d1"},
+				},
+				{
+					{Text: "body-b2"},
+					{Text: "body-c2"},
+					{Text: "body-d2"},
+				},
+			},
+			Merges: []mergeRegion{
+				{StartRow: 0, EndRow: 2, StartCol: 0, EndCol: 2},
+			},
+		},
+	}
+
+	got, err := stitchStyledRangeSegments([]styledRangeSegment{seg1, seg2})
+	if err != nil {
+		t.Fatalf("stitchStyledRangeSegments error: %v", err)
+	}
+	if got.Rows != 3 || got.Cols != 4 {
+		t.Fatalf("unexpected stitched dimensions rows=%d cols=%d", got.Rows, got.Cols)
+	}
+	if got.ColWidths[0] != 120 || got.ColWidths[1] != 150 || got.ColWidths[2] != 160 || got.ColWidths[3] != 170 {
+		t.Fatalf("unexpected stitched column widths: %#v", got.ColWidths)
+	}
+	if got.Cells[0][0].Text != "top-a" || got.Cells[1][1].Text != "body-b1" || got.Cells[2][3].Text != "body-d2" {
+		t.Fatalf("unexpected stitched cell mapping: row0col0=%q row1col1=%q row2col3=%q", got.Cells[0][0].Text, got.Cells[1][1].Text, got.Cells[2][3].Text)
+	}
+	if len(got.Merges) != 1 {
+		t.Fatalf("expected 1 stitched merge, got %d", len(got.Merges))
+	}
+	if got.Merges[0].StartRow != 1 || got.Merges[0].EndRow != 3 || got.Merges[0].StartCol != 1 || got.Merges[0].EndCol != 3 {
+		t.Fatalf("unexpected stitched merge: %#v", got.Merges[0])
+	}
+}
