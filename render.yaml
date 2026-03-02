@@ -3,7 +3,7 @@ services:
     name: go-bot-workflow-mm-lh-provided
     runtime: go
     plan: free
-    autoDeploy: true
+    autoDeploy: false
     healthCheckPath: /healthz
     buildCommand: go build -o bin/workflow-mm-lh-provided ./cmd/workflow-mm-lh-provided
     startCommand: ./bin/workflow-mm-lh-provided

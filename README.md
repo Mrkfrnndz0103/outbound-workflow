@@ -423,6 +423,7 @@ The service exposes:
 ## Security notes
 
 - Keep all secrets/webhook URLs private.
+- Never paste `.env` values, access keys, or credential JSON into tickets, chat, or deployment logs.
 - Do not expose arbitrary shell execution; only run named workflows from `workflows.yaml`.
 - Review every script called by workflow definitions.
 
