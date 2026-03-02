@@ -302,7 +302,7 @@ go run ./cmd/workflow-ob-pending-dispatch
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
 6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports matched rows into three tabs in batches (lightweight for large datasets).
-7. After import, waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group via system account webhook.
+7. After import, writes a local timestamp to helper cell `config!B1` (same destination sheet by default), waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group.
 
 Defaults:
 
@@ -362,6 +362,7 @@ Optional env:
 - `WF21_SUMMARY_SECOND_IMAGE_ENABLED` (default `true`)
 - `WF21_SUMMARY_SECOND_TAB` (default `[SOC5] SOCPacked_Dashboard`)
 - `WF21_SUMMARY_SECOND_RANGES` (default `A1:U9,B142:T167`; supports first token with tab prefix like `[SOC5] SOCPacked_Dashboard!A1:U9, B142:T167`)
+- `WF21_SUMMARY_SYNC_CELL` (default `config!B1`; helper cell updated with local timestamp after import sync, before the summary wait/send flow)
 - `WF21_SUMMARY_WAIT_SECONDS` (default `8`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)

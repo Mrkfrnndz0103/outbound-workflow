@@ -140,6 +140,8 @@ services:
         value: "[SOC] Backlogs Summary"
       - key: WF21_SUMMARY_RANGE
         value: B2:Q59
+      - key: WF21_SUMMARY_SYNC_CELL
+        value: config!B1
       - key: WF21_SUMMARY_WAIT_SECONDS
         value: "8"
       - key: WF21_SUMMARY_STABILITY_RUNS

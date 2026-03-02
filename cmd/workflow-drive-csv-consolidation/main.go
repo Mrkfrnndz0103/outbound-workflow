@@ -67,6 +67,7 @@ const (
 	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
 	defaultSummaryHTTPTimeout     = 45 * time.Second
 	defaultSummaryTimezone        = "Asia/Manila"
+	defaultSummarySyncCell        = "config!B1"
 )
 
 var selectedOutputHeaders = []string{
@@ -143,6 +144,7 @@ type workflowConfig struct {
 	SummarySendHTTPTimeout time.Duration
 	SummaryTimezone        string
 	SummaryLocation        *time.Location
+	SummarySyncCell        string
 }
 
 type workflowState struct {
@@ -265,7 +267,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -273,6 +275,7 @@ func main() {
 			cfg.SummarySecondEnabled,
 			cfg.SummarySecondTab,
 			strings.Join(cfg.SummarySecondRanges, ","),
+			cfg.SummarySyncCell,
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
@@ -904,6 +907,10 @@ func loadConfig() (workflowConfig, error) {
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
 		SummaryTimezone:        summaryTimezone,
 		SummaryLocation:        summaryLocation,
+		SummarySyncCell: firstNonEmpty(
+			strings.TrimSpace(os.Getenv("WF21_SUMMARY_SYNC_CELL")),
+			defaultSummarySyncCell,
+		),
 	}
 
 	if cfg.PollInterval < 5*time.Second {
@@ -991,6 +998,9 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.SummaryImageMaxBase64 < 512*1024 {
 		cfg.SummaryImageMaxBase64 = defaultSummaryImageMaxBase64
+	}
+	if cfg.SummarySendEnabled && !cfg.DryRun && strings.TrimSpace(cfg.SummarySyncCell) == "" {
+		return workflowConfig{}, errors.New("WF21_SUMMARY_SYNC_CELL is required when summary send is enabled")
 	}
 	if cfg.SummarySecondEnabled {
 		if strings.TrimSpace(cfg.SummarySecondTab) == "" {

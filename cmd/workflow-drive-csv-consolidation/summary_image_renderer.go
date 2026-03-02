@@ -125,6 +125,8 @@ const (
 	summarySendRetryMax    = 5
 	summarySendRetryBase   = 1 * time.Second
 	summarySendRetryMaxDur = 8 * time.Second
+	summarySyncPollInterval = 1 * time.Second
+	summarySyncMaxWait      = 30 * time.Second
 )
 
 type summaryImageSendResult struct {
@@ -148,6 +150,10 @@ type styledRangeSegment struct {
 func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheetsSvc *sheets.Service) (summaryImageSendResult, error) {
 	var result summaryImageSendResult
 	var exportHTTPClient *http.Client
+
+	if err := updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
+		return result, err
+	}
 
 	if cfg.SummaryWaitAfterImport > 0 {
 		if err := waitWithContext(ctx, cfg.SummaryWaitAfterImport); err != nil {
@@ -277,6 +283,72 @@ func sendSummaryWithRetry(ctx context.Context, op string, send func() error) err
 		}
 	}
 	return fmt.Errorf("%s: %w", op, lastErr)
+}
+
+func updateSummarySyncCell(ctx context.Context, cfg workflowConfig, sheetsSvc *sheets.Service) error {
+	cellRef := strings.TrimSpace(cfg.SummarySyncCell)
+	if cellRef == "" {
+		return nil
+	}
+
+	previousValue, err := readSheetCellValue(ctx, sheetsSvc, cfg.DestinationSheetID, cellRef)
+	if err != nil {
+		return fmt.Errorf("read summary sync cell %s: %w", cellRef, err)
+	}
+
+	now := time.Now()
+	if cfg.SummaryLocation != nil {
+		now = now.In(cfg.SummaryLocation)
+	}
+	timestamp := now.Format("2006-01-02 15:04:05.000000 MST")
+	if strings.TrimSpace(previousValue) == timestamp {
+		timestamp = now.Format(time.RFC3339Nano)
+	}
+
+	body := &sheets.ValueRange{
+		Values: [][]interface{}{{timestamp}},
+	}
+	if err := runSheetsWriteWithRetry(ctx, cfg, "update_summary_sync_cell", func() error {
+		_, updateErr := sheetsSvc.Spreadsheets.Values.Update(cfg.DestinationSheetID, cellRef, body).
+			ValueInputOption("RAW").
+			Context(ctx).
+			Do()
+		return updateErr
+	}); err != nil {
+		return fmt.Errorf("write summary sync cell %s: %w", cellRef, err)
+	}
+
+	deadline := time.Now().Add(summarySyncMaxWait)
+	lastSeen := ""
+	for {
+		lastSeen, err = readSheetCellValue(ctx, sheetsSvc, cfg.DestinationSheetID, cellRef)
+		if err == nil && strings.TrimSpace(lastSeen) == timestamp {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("confirm summary sync cell %s update: %w", cellRef, err)
+			}
+			return fmt.Errorf("summary sync cell %s did not update in time expected=%q last=%q", cellRef, timestamp, strings.TrimSpace(lastSeen))
+		}
+		if waitErr := waitWithContext(ctx, summarySyncPollInterval); waitErr != nil {
+			return waitErr
+		}
+	}
+}
+
+func readSheetCellValue(ctx context.Context, sheetsSvc *sheets.Service, sheetID, cellRef string) (string, error) {
+	resp, err := sheetsSvc.Spreadsheets.Values.Get(sheetID, cellRef).
+		ValueRenderOption("FORMATTED_VALUE").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Values) == 0 || len(resp.Values[0]) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(fmt.Sprint(resp.Values[0][0])), nil
 }
 
 func isRetryableSummarySendError(err error) bool {
