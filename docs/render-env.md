@@ -102,14 +102,15 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_STATE_FILE` | `value` (managed) | `data/workflow2-1-drive-csv-consolidation-state.json` |
 | `WF21_STATUS_FILE` | `value` (managed) | `data/workflow2-1-drive-csv-consolidation-status.json` |
 | `WF21_SUMMARY_AUTO_FIT_COLUMNS` | `value` (managed) | `false` |
-| `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `45` |
-| `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` | `value` (managed) | `5242880` |
-| `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` | `value` (managed) | `3000` |
+| `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `90` |
+| `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` | `value` (managed) | `2097152` |
+| `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` | `value` (managed) | `1800` |
 | `WF21_SUMMARY_PDF_CONVERTER` | `value` (managed) | `auto` |
 | `WF21_SUMMARY_PDF_DPI` | `value` (managed) | `180` |
 | `WF21_SUMMARY_RANGE` | `value` (managed) | `B2:Q59` |
 | `WF21_SUMMARY_RENDER_MODE` | `value` (managed) | `styled` |
-| `WF21_SUMMARY_RENDER_SCALE` | `value` (managed) | `2` |
+| `WF21_SUMMARY_RENDER_SCALE` | `value` (managed) | `1` |
+| `WF21_SUMMARY_SECOND_IMAGE_ENABLED` | `value` (managed) | `false` |
 | `WF21_SUMMARY_SEND_ENABLED` | `value` (managed) | `true` |
 | `WF21_SUMMARY_SHEET_ID` | `value` (managed) | `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA` |
 | `WF21_SUMMARY_STABILITY_RUNS` | `value` (managed) | `3` |
@@ -131,7 +132,6 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
   - `WF21_SEATALK_BASE_URL`
   - `WF21_SEATALK_GROUP_ID`
   - `WF21_SUMMARY_SEATALK_MODE`
-  - `WF21_SUMMARY_SECOND_IMAGE_ENABLED`
   - `WF21_SUMMARY_SECOND_RANGES`
   - `WF21_SUMMARY_SECOND_TAB`
 
