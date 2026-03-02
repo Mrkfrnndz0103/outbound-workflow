@@ -119,8 +119,12 @@ var (
 )
 
 const (
-	minRenderedFontSize = 4.0
-	maxRenderedFontSize = 144.0
+	minRenderedFontSize    = 4.0
+	maxRenderedFontSize    = 144.0
+	summarySendMinInterval = 1200 * time.Millisecond
+	summarySendRetryMax    = 5
+	summarySendRetryBase   = 1 * time.Second
+	summarySendRetryMaxDur = 8 * time.Second
 )
 
 type summaryImageSendResult struct {
@@ -211,11 +215,18 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 
 	if cfg.SummarySeaTalkMode == "webhook" {
 		sender := seatalk.NewSystemAccountClient(cfg.SummaryWebhookURL, cfg.SummarySendHTTPTimeout)
-		if err = sender.SendTextWithAtAll(ctx, buildSummaryCaption(captionTS), 1, true); err != nil {
+		if err = sendSummaryWithRetry(ctx, "send summary caption to seatalk webhook", func() error {
+			return sender.SendTextWithAtAll(ctx, buildSummaryCaption(captionTS), 1, true)
+		}); err != nil {
 			return result, fmt.Errorf("send summary caption to seatalk webhook: %w", err)
 		}
 		for _, img := range images {
-			if err = sender.SendImageBase64(ctx, img.Base64Data); err != nil {
+			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+				return result, err
+			}
+			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk webhook", img.Label), func() error {
+				return sender.SendImageBase64(ctx, img.Base64Data)
+			}); err != nil {
 				return result, fmt.Errorf("send %s summary image to seatalk webhook: %w", img.Label, err)
 			}
 		}
@@ -228,15 +239,55 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		BaseURL:   cfg.SummarySeaTalkBaseURL,
 		Timeout:   cfg.SummarySendHTTPTimeout,
 	})
-	if err = sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(captionTS), 1); err != nil {
+	if err = sendSummaryWithRetry(ctx, "send summary caption to seatalk bot", func() error {
+		return sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(captionTS), 1)
+	}); err != nil {
 		return result, fmt.Errorf("send summary caption to seatalk bot: %w", err)
 	}
 	for _, img := range images {
-		if err = sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data); err != nil {
+		if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			return result, err
+		}
+		if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot", img.Label), func() error {
+			return sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data)
+		}); err != nil {
 			return result, fmt.Errorf("send %s summary image to seatalk bot: %w", img.Label, err)
 		}
 	}
 	return result, nil
+}
+
+func sendSummaryWithRetry(ctx context.Context, op string, send func() error) error {
+	delay := summarySendRetryBase
+	var lastErr error
+	for attempt := 1; attempt <= summarySendRetryMax; attempt++ {
+		lastErr = send()
+		if lastErr == nil {
+			return nil
+		}
+		if attempt == summarySendRetryMax || !isRetryableSummarySendError(lastErr) {
+			return fmt.Errorf("%s: %w", op, lastErr)
+		}
+		if err := waitWithContext(ctx, delay); err != nil {
+			return fmt.Errorf("%s canceled while waiting to retry: %w", op, err)
+		}
+		delay *= 2
+		if delay > summarySendRetryMaxDur {
+			delay = summarySendRetryMaxDur
+		}
+	}
+	return fmt.Errorf("%s: %w", op, lastErr)
+}
+
+func isRetryableSummarySendError(err error) bool {
+	low := strings.ToLower(err.Error())
+	if strings.Contains(low, "status=429") || strings.Contains(low, "code=8") || strings.Contains(low, "rate limit") {
+		return true
+	}
+	if strings.Contains(low, "status=5") || strings.Contains(low, "timeout") || strings.Contains(low, "temporar") {
+		return true
+	}
+	return false
 }
 
 func buildEncodedSummaryImage(

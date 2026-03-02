@@ -157,7 +157,7 @@ services:
       - key: WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES
         value: "5242880"
       - key: WF21_SUMMARY_HTTP_TIMEOUT_SECONDS
-        value: "10"
+        value: "45"
       - key: WF21_TIMEZONE
         value: Asia/Manila
       # Secrets below stay unmanaged (set manually in Render or via API/CI secret sync).

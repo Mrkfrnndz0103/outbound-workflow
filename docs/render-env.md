@@ -102,7 +102,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_STATE_FILE` | `value` (managed) | `data/workflow2-1-drive-csv-consolidation-state.json` |
 | `WF21_STATUS_FILE` | `value` (managed) | `data/workflow2-1-drive-csv-consolidation-status.json` |
 | `WF21_SUMMARY_AUTO_FIT_COLUMNS` | `value` (managed) | `false` |
-| `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `10` |
+| `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `45` |
 | `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` | `value` (managed) | `5242880` |
 | `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` | `value` (managed) | `3000` |
 | `WF21_SUMMARY_PDF_CONVERTER` | `value` (managed) | `auto` |

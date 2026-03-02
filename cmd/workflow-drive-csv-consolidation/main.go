@@ -65,7 +65,7 @@ const (
 	defaultSummaryPDFConverter    = "auto"
 	defaultSummaryImageMaxWidthPx = 3000
 	defaultSummaryImageMaxBase64  = 5 * 1024 * 1024
-	defaultSummaryHTTPTimeout     = 10 * time.Second
+	defaultSummaryHTTPTimeout     = 45 * time.Second
 	defaultSummaryTimezone        = "Asia/Manila"
 )
 

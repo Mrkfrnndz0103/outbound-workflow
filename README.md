@@ -372,7 +372,7 @@ Optional env:
 - `WF21_SUMMARY_PDF_CONVERTER` (default `auto`; `auto|pdftoppm|magick`, used when `WF21_SUMMARY_RENDER_MODE=pdf_png`)
 - `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` (default `3000`)
 - `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` (default `5242880`)
-- `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `10`)
+- `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` (default `45`)
 - `WF21_TIMEZONE` (default `Asia/Manila`; used for caption timestamp like `Outbound Pending for Dispatch as of ...`)
 
 PDF mode dependency note:
