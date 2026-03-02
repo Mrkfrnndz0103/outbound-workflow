@@ -409,6 +409,12 @@ Use the included `render.yaml` blueprint to deploy as a web service.
 go run ./scripts/generate_render_env_doc.go
 ```
 
+- Auto-update locally when `.env`, `.env.example`, or `render.yaml` changes:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
+```
+
 - Auto-update via Cloudflare Worker webhook:
   - Worker project: `cloudflare/render-env-sync`
   - Endpoint: `POST /github-webhook`

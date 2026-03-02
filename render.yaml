@@ -117,7 +117,7 @@ services:
       - key: WF21_HEALTH_PORT
         value: ""
       - key: WF21_POLL_INTERVAL_SECONDS
-        value: "30"
+        value: "1"
       - key: WF21_SHEETS_BATCH_SIZE
         value: "7000"
       - key: WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS

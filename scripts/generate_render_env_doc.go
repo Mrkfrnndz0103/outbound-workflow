@@ -71,6 +71,10 @@ func run() error {
 	out.WriteString("```powershell\n")
 	out.WriteString("go run ./scripts/generate_render_env_doc.go\n")
 	out.WriteString("```\n\n")
+	out.WriteString("Auto-update on local `.env` / `.env.example` / `render.yaml` changes:\n\n")
+	out.WriteString("```powershell\n")
+	out.WriteString("powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1\n")
+	out.WriteString("```\n\n")
 
 	for _, svc := range bp.Services {
 		cmdDir := inferCmdDir(svc)
