@@ -518,6 +518,8 @@ func processZipAndImport(
 	}
 	remarkIdx := -1
 	receiveStatusIdx := -1
+	receiverTypeIdx := -1
+	currentStationIdx := -1
 	pendingRCVRows := make([][]string, 0, cfg.SheetsBatchSize)
 	packedAnotherTORows := make([][]string, 0, cfg.SheetsBatchSize)
 	noLHPackingRows := make([][]string, 0, cfg.SheetsBatchSize)
@@ -552,6 +554,8 @@ func processZipAndImport(
 
 			remarkIdx = findIndexByHeader(canonicalHeaderMap, "Remark", -1, len(canonicalHeader))
 			receiveStatusIdx = findIndexByHeader(canonicalHeaderMap, "Receive Status", -1, len(canonicalHeader))
+			receiverTypeIdx = findIndexByHeader(canonicalHeaderMap, "Receiver Type", -1, len(canonicalHeader))
+			currentStationIdx = findIndexByHeader(canonicalHeaderMap, "Current Station", -1, len(canonicalHeader))
 			if remarkIdx < 0 {
 				entryReader.Close()
 				return result, errors.New(`required column "Remark" not found in canonical CSV header`)
@@ -559,6 +563,14 @@ func processZipAndImport(
 			if receiveStatusIdx < 0 {
 				entryReader.Close()
 				return result, errors.New(`required column "Receive Status" not found in canonical CSV header`)
+			}
+			if receiverTypeIdx < 0 {
+				entryReader.Close()
+				return result, errors.New(`required column "Receiver Type" not found in canonical CSV header`)
+			}
+			if currentStationIdx < 0 {
+				entryReader.Close()
+				return result, errors.New(`required column "Current Station" not found in canonical CSV header`)
 			}
 
 			for i, name := range selectedOutputHeaders {
@@ -591,6 +603,9 @@ func processZipAndImport(
 				return result, fmt.Errorf("write consolidated row: %w", err)
 			}
 			result.RowsConsolidated++
+			if !rowMatchesFilters(canonicalRow, receiverTypeIdx, currentStationIdx) {
+				continue
+			}
 
 			pendingReceive := shouldImportPendingReceive(canonicalRow, receiveStatusIdx)
 			packedInAnotherTO := shouldImportPackedInAnotherTO(canonicalRow, remarkIdx)
