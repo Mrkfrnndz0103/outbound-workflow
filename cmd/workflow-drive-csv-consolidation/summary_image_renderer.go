@@ -151,10 +151,6 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	var result summaryImageSendResult
 	var exportHTTPClient *http.Client
 
-	if err := updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
-		return result, err
-	}
-
 	if cfg.SummaryWaitAfterImport > 0 {
 		if err := waitWithContext(ctx, cfg.SummaryWaitAfterImport); err != nil {
 			return result, err

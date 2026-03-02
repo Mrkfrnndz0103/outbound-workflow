@@ -54,15 +54,15 @@ func TestShouldImportPendingReceive(t *testing.T) {
 	}
 }
 
-func TestShouldImportPackedInAnotherTORequiresBothTokens(t *testing.T) {
-	rowMatch := []string{"Pack in another TO then Pack in another HandoverTask"}
+func TestShouldImportPackedInAnotherTOMatchesSingleToken(t *testing.T) {
+	rowMatch := []string{"Pack in another TO then anything else"}
 	if !shouldImportPackedInAnotherTO(rowMatch, 0) {
-		t.Fatalf("expected packed-in-another matcher to pass when both tokens are present")
+		t.Fatalf("expected packed-in-another matcher to pass when token is present")
 	}
 
-	rowMissing := []string{"Pack in another TO only"}
+	rowMissing := []string{"Pack in another HandoverTask only"}
 	if shouldImportPackedInAnotherTO(rowMissing, 0) {
-		t.Fatalf("expected packed-in-another matcher to fail when one token is missing")
+		t.Fatalf("expected packed-in-another matcher to fail when token is missing")
 	}
 }
 

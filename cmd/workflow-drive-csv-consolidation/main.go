@@ -529,38 +529,9 @@ func processZipAndImport(
 	}
 	remarkIdx := -1
 	receiveStatusIdx := -1
-	importTabStates := []destinationImportTabState{
-		{
-			Name:         cfg.DestinationTabPendingRCV,
-			NextSheetRow: 2,
-			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-		},
-		{
-			Name:         cfg.DestinationTabPackedAnotherTO,
-			NextSheetRow: 2,
-			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-		},
-		{
-			Name:         cfg.DestinationTabNoLHPacking,
-			NextSheetRow: 2,
-			PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-		},
-	}
-
-	if !cfg.DryRun {
-		for i := range importTabStates {
-			tabState := &importTabStates[i]
-			if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, tabState.Name, &tabState.GridState); err != nil {
-				return result, err
-			}
-			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name); err != nil {
-				return result, err
-			}
-			if err = writeHeaderRow(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name, selectedOutputHeaders); err != nil {
-				return result, err
-			}
-		}
-	}
+	pendingRCVRows := make([][]string, 0, cfg.SheetsBatchSize)
+	packedAnotherTORows := make([][]string, 0, cfg.SheetsBatchSize)
+	noLHPackingRows := make([][]string, 0, cfg.SheetsBatchSize)
 
 	for _, entry := range csvFiles {
 		entryReader, openErr := entry.Open()
@@ -638,38 +609,22 @@ func processZipAndImport(
 
 			if pendingReceive || packedInAnotherTO || noLHPacking {
 				picked := pickColumns(canonicalRow, selectorIndexes)
-				needsFlush := false
 				if pendingReceive {
 					result.RowsImported++
 					if !cfg.DryRun {
-						importTabStates[0].PendingRows = append(importTabStates[0].PendingRows, picked)
-						if len(importTabStates[0].PendingRows) >= cfg.SheetsBatchSize {
-							needsFlush = true
-						}
+						pendingRCVRows = append(pendingRCVRows, picked)
 					}
 				}
 				if packedInAnotherTO {
 					result.RowsImported++
 					if !cfg.DryRun {
-						importTabStates[1].PendingRows = append(importTabStates[1].PendingRows, picked)
-						if len(importTabStates[1].PendingRows) >= cfg.SheetsBatchSize {
-							needsFlush = true
-						}
+						packedAnotherTORows = append(packedAnotherTORows, picked)
 					}
 				}
 				if noLHPacking {
 					result.RowsImported++
 					if !cfg.DryRun {
-						importTabStates[2].PendingRows = append(importTabStates[2].PendingRows, picked)
-						if len(importTabStates[2].PendingRows) >= cfg.SheetsBatchSize {
-							needsFlush = true
-						}
-					}
-				}
-				if !cfg.DryRun && needsFlush {
-					if err = flushDestinationTabsRows(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, importTabStates); err != nil {
-						entryReader.Close()
-						return result, err
+						noLHPackingRows = append(noLHPackingRows, picked)
 					}
 				}
 			}
@@ -694,7 +649,47 @@ func processZipAndImport(
 	}
 
 	if !cfg.DryRun {
-		if err = flushDestinationTabsRows(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, importTabStates); err != nil {
+		importTabStates := []destinationImportTabState{
+			{
+				Name:         cfg.DestinationTabPendingRCV,
+				NextSheetRow: 2,
+				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+			},
+			{
+				Name:         cfg.DestinationTabPackedAnotherTO,
+				NextSheetRow: 2,
+				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+			},
+			{
+				Name:         cfg.DestinationTabNoLHPacking,
+				NextSheetRow: 2,
+				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+			},
+		}
+		for i := range importTabStates {
+			tabState := &importTabStates[i]
+			if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, tabState.Name, &tabState.GridState); err != nil {
+				return result, err
+			}
+			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name); err != nil {
+				return result, err
+			}
+			if err = writeHeaderRow(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name, selectedOutputHeaders); err != nil {
+				return result, err
+			}
+		}
+
+		// Import priority: pending_rcv -> packed_in_another_to -> no_lhpacking.
+		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[0], pendingRCVRows); err != nil {
+			return result, err
+		}
+		if err = updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
+			return result, err
+		}
+		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
+			return result, err
+		}
+		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[2], noLHPackingRows); err != nil {
 			return result, err
 		}
 	}
@@ -1283,6 +1278,30 @@ func flushDestinationTabsRows(
 	return nil
 }
 
+func importRowsToDestinationTab(
+	ctx context.Context,
+	sheetsSvc *sheets.Service,
+	cfg workflowConfig,
+	sheetID string,
+	tabState *destinationImportTabState,
+	rows [][]string,
+) error {
+	if tabState == nil || len(rows) == 0 {
+		return nil
+	}
+	batchSize := maxInt(cfg.SheetsBatchSize, 1)
+	batchStates := []destinationImportTabState{*tabState}
+	for start := 0; start < len(rows); start += batchSize {
+		end := minInt(start+batchSize, len(rows))
+		batchStates[0].PendingRows = rows[start:end]
+		if err := flushDestinationTabsRows(ctx, sheetsSvc, cfg, sheetID, batchStates); err != nil {
+			return err
+		}
+	}
+	*tabState = batchStates[0]
+	return nil
+}
+
 func runSheetsWriteWithRetry(ctx context.Context, cfg workflowConfig, opName string, op func() error) error {
 	attempts := maxInt(cfg.SheetsWriteRetryMaxAttempts, 1)
 	delay := cfg.SheetsWriteRetryBaseDelay
@@ -1664,8 +1683,7 @@ func shouldImportPackedInAnotherTO(row []string, remarkIdx int) bool {
 	if remarkIdx < 0 || remarkIdx >= len(row) {
 		return false
 	}
-	remark := row[remarkIdx]
-	return containsTextFold(remark, "Pack in another TO") && containsTextFold(remark, "Pack in another HandoverTask")
+	return containsTextFold(row[remarkIdx], "Pack in another TO")
 }
 
 func shouldImportNoLHPacking(row []string, remarkIdx int) bool {

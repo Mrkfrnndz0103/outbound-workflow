@@ -302,7 +302,9 @@ go run ./cmd/workflow-ob-pending-dispatch
 4. Detects/drops hidden leading unnamed column (default enabled).
 5. Uploads consolidated CSV to Cloudflare R2.
 6. Overwrites only destination columns `A:K` (keeps `L+` formulas untouched) and imports matched rows into three tabs in batches (lightweight for large datasets).
-7. After import, writes a local timestamp to helper cell `config!B1` (same destination sheet by default), waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group.
+7. Imports destination tabs in order: `pending_rcv`, then `packed_in_another_to`, then `no_lhpacking`.
+8. As soon as `pending_rcv` import is completed, writes a local timestamp to helper cell `config!B1` (same destination sheet by default), then continues remaining tab imports.
+9. After import flow, waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group.
 
 Defaults:
 
@@ -310,7 +312,7 @@ Defaults:
 - Destination sheet: `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA`
 - Destination tabs:
   - `pending_rcv` (when `Receive Status` contains `Pending Receive`)
-  - `packed_in_another_to` (when `Remark` contains both `Pack in another TO` and `Pack in another HandoverTask`)
+  - `packed_in_another_to` (when `Remark` contains `Pack in another TO`)
   - `no_lhpacking` (when `Remark` contains `Receive in`)
 - Output columns:
   - `TO Number`, `SPX Tracking Number`, `Receiver Name`, `TO Order Quantity`, `TO Number`, `Operator`, `Create Time`, `Complete Time`, `Remark`, `Receive Status`, `Staging Area ID`
