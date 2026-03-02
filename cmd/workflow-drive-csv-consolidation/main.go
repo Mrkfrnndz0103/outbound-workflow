@@ -335,21 +335,10 @@ func runCycle(
 		return err
 	}
 	if len(files) == 0 {
-		if !cfg.DryRun {
-			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, cfg.DestinationTabPendingRCV); err != nil {
-				return err
-			}
-			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, cfg.DestinationTabPackedAnotherTO); err != nil {
-				return err
-			}
-			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, cfg.DestinationTabNoLHPacking); err != nil {
-				return err
-			}
-		}
 		status.FoundZip = false
 		status.Message = "no zip files found in parent folder"
 		writeStatusIfConfigured(cfg.StatusFile, status, logger)
-		logger.Printf("no zip files found parent_folder=%s destination_cleared=%t", cfg.DriveParentFolderID, !cfg.DryRun)
+		logger.Printf("no zip files found parent_folder=%s", cfg.DriveParentFolderID)
 		return nil
 	}
 	latest := files[len(files)-1]
