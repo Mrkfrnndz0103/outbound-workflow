@@ -84,7 +84,8 @@ services:
     autoDeploy: true
     healthCheckPath: /healthz
     buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
-    startCommand: ./bin/workflow-drive-csv-consolidation
+    startCommand: command -v pdftoppm; command -v magick; ./bin/workflow-drive-csv-consolidation
+    
     envVars:
       - key: WF21_GOOGLE_CREDENTIALS_FILE
         value: ""
@@ -149,7 +150,7 @@ services:
       - key: WF21_SUMMARY_STABILITY_WAIT_SECONDS
         value: "2"
       - key: WF21_SUMMARY_RENDER_MODE
-        value: styled
+        value: pdf_png
       - key: WF21_SUMMARY_RENDER_SCALE
         value: "1"
       - key: WF21_SUMMARY_AUTO_FIT_COLUMNS

@@ -112,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_SUMMARY_PDF_CONVERTER` | `value` (managed) | `auto` |
 | `WF21_SUMMARY_PDF_DPI` | `value` (managed) | `180` |
 | `WF21_SUMMARY_RANGE` | `value` (managed) | `B2:Q59` |
-| `WF21_SUMMARY_RENDER_MODE` | `value` (managed) | `styled` |
+| `WF21_SUMMARY_RENDER_MODE` | `value` (managed) | `pdf_png` |
 | `WF21_SUMMARY_RENDER_SCALE` | `value` (managed) | `1` |
 | `WF21_SUMMARY_SEATALK_MODE` | `value` (managed) | `bot` |
 | `WF21_SUMMARY_SECOND_IMAGE_ENABLED` | `value` (managed) | `false` |

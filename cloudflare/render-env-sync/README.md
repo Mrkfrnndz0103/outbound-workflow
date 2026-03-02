@@ -36,6 +36,8 @@ npx wrangler secret put GITHUB_WEBHOOK_SECRET
 npx wrangler deploy
 ```
 
+No separate build command is required. `wrangler deploy` compiles/bundles `src/index.ts` automatically using the `main` entry in `wrangler.toml`.
+
 5. Add GitHub webhook:
 - URL: `https://<worker-subdomain>/github-webhook` (or root URL if you bind at `/`)
 - Content type: `application/json`
