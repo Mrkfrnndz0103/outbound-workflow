@@ -130,6 +130,8 @@ services:
         value: ""
       - key: WF21_SUMMARY_SEND_ENABLED
         value: "true"
+      - key: WF21_SUMMARY_SEATALK_MODE
+        value: bot
       - key: WF21_SUMMARY_SECOND_IMAGE_ENABLED
         value: "false"
       - key: WF21_SUMMARY_SHEET_ID
@@ -157,12 +159,20 @@ services:
       - key: WF21_SUMMARY_IMAGE_MAX_WIDTH_PX
         value: "1800"
       - key: WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES
-        value: "2097152"
+        value: "5242880"
       - key: WF21_SUMMARY_HTTP_TIMEOUT_SECONDS
         value: "90"
       - key: WF21_TIMEZONE
         value: Asia/Manila
+      - key: WF21_SEATALK_GROUP_ID
+        value: NTMwNTQyNTc2OTg4
+      - key: WF21_SEATALK_APP_ID
+        value: Mjk2ODA1MDg0MTMw
+      - key: WF21_SEATALK_BASE_URL
+        value: https://openapi.seatalk.io
       # Secrets below stay unmanaged (set manually in Render or via API/CI secret sync).
+      - key: WF21_SEATALK_APP_SECRET
+        sync: false
       - key: WF21_GOOGLE_CREDENTIALS_JSON
         sync: false
       - key: WF21_R2_ACCOUNT_ID
