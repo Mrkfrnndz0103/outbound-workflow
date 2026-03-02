@@ -83,7 +83,7 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /healthz
-    buildCommand: apt-get update && apt-get install -y --no-install-recommends poppler-utils imagemagick && go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
+    buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
     startCommand: ./bin/workflow-drive-csv-consolidation
     envVars:
       - key: WF21_GOOGLE_CREDENTIALS_FILE
@@ -143,7 +143,7 @@ services:
       - key: WF21_SUMMARY_STABILITY_WAIT_SECONDS
         value: "2"
       - key: WF21_SUMMARY_RENDER_MODE
-        value: pdf_png
+        value: styled
       - key: WF21_SUMMARY_RENDER_SCALE
         value: "2"
       - key: WF21_SUMMARY_AUTO_FIT_COLUMNS
