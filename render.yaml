@@ -85,7 +85,7 @@ services:
     name: go-bot-workflow-drive-csv-consolidation
     runtime: docker
     plan: free
-    autoDeploy: true
+    autoDeploy: false
     healthCheckPath: /healthz
     dockerfilePath: cmd/workflow-drive-csv-consolidation/Dockerfile.render
     dockerContext: .
