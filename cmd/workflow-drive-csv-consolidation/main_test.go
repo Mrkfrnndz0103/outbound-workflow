@@ -393,6 +393,49 @@ func TestParseSummaryRangeListRejectsInvalidRange(t *testing.T) {
 	}
 }
 
+func TestBuildDestinationSnapshotHashDeterministic(t *testing.T) {
+	pending := [][]string{{"A", "B"}, {"C", "D"}}
+	packed := [][]string{{"E", "F"}}
+	noLH := [][]string{{"G", "H"}}
+
+	first, err := buildDestinationSnapshotHash(pending, packed, noLH)
+	if err != nil {
+		t.Fatalf("buildDestinationSnapshotHash first error: %v", err)
+	}
+	second, err := buildDestinationSnapshotHash(pending, packed, noLH)
+	if err != nil {
+		t.Fatalf("buildDestinationSnapshotHash second error: %v", err)
+	}
+	if first == "" || second == "" {
+		t.Fatalf("expected non-empty hashes")
+	}
+	if first != second {
+		t.Fatalf("expected deterministic hash, got %q != %q", first, second)
+	}
+}
+
+func TestBuildDestinationSnapshotHashChangesWhenRowsChange(t *testing.T) {
+	base, err := buildDestinationSnapshotHash(
+		[][]string{{"A", "B"}},
+		[][]string{{"E", "F"}},
+		[][]string{{"G", "H"}},
+	)
+	if err != nil {
+		t.Fatalf("buildDestinationSnapshotHash base error: %v", err)
+	}
+	changed, err := buildDestinationSnapshotHash(
+		[][]string{{"A", "B"}, {"X", "Y"}},
+		[][]string{{"E", "F"}},
+		[][]string{{"G", "H"}},
+	)
+	if err != nil {
+		t.Fatalf("buildDestinationSnapshotHash changed error: %v", err)
+	}
+	if base == changed {
+		t.Fatalf("expected hash to change when rows change")
+	}
+}
+
 func TestStitchStyledRangeSegmentsStacksAndAlignsColumns(t *testing.T) {
 	seg1 := styledRangeSegment{
 		Bounds: sheetRange{startCol: 1, endCol: 3, startRow: 1, endRow: 1},

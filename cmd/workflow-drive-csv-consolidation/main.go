@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,6 +156,7 @@ type workflowState struct {
 	LastProcessedModifiedTime string `json:"last_processed_modified_time,omitempty"`
 	LastProcessedAt           string `json:"last_processed_at,omitempty"`
 	LastUploadedObjectKey     string `json:"last_uploaded_object_key,omitempty"`
+	LastDestinationSyncHash   string `json:"last_destination_sync_hash,omitempty"`
 }
 
 type workflowStatus struct {
@@ -174,6 +177,7 @@ type workflowStatus struct {
 	RowsImported      int64  `json:"rows_imported,omitempty"`
 	ObjectKey         string `json:"object_key,omitempty"`
 	ObjectBytes       int64  `json:"object_bytes,omitempty"`
+	DestinationSynced bool   `json:"destination_synced,omitempty"`
 	SummaryImageSent  bool   `json:"summary_image_sent,omitempty"`
 	SummaryStable     bool   `json:"summary_stable,omitempty"`
 	SummaryImageFmt   string `json:"summary_image_format,omitempty"`
@@ -193,15 +197,17 @@ type driveZipFile struct {
 }
 
 type processResult struct {
-	CSVFilesProcessed int
-	RowsConsolidated  int64
-	RowsImported      int64
-	ObjectKey         string
-	ObjectBytes       int64
-	SummaryImageSent  bool
-	SummaryStable     bool
-	SummaryImageFmt   string
-	SummaryImageBytes int
+	CSVFilesProcessed   int
+	RowsConsolidated    int64
+	RowsImported        int64
+	ObjectKey           string
+	ObjectBytes         int64
+	DestinationSynced   bool
+	DestinationSyncHash string
+	SummaryImageSent    bool
+	SummaryStable       bool
+	SummaryImageFmt     string
+	SummaryImageBytes   int
 }
 
 type sheetGridState struct {
@@ -398,7 +404,16 @@ func runCycle(
 		}
 
 		sendSummaryAfterImport := i == len(pending)-1
-		result, processErr := processZipAndImport(ctx, cfg, sheetsSvc, r2Client, file, zipPath, sendSummaryAfterImport)
+		result, processErr := processZipAndImport(
+			ctx,
+			cfg,
+			sheetsSvc,
+			r2Client,
+			file,
+			zipPath,
+			sendSummaryAfterImport,
+			state.LastDestinationSyncHash,
+		)
 		removeErr := os.Remove(zipPath)
 		if processErr != nil {
 			return processErr
@@ -421,13 +436,16 @@ func runCycle(
 		state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339Nano)
 		state.LastProcessedAt = now.Format(time.RFC3339)
 		state.LastUploadedObjectKey = result.ObjectKey
+		if strings.TrimSpace(result.DestinationSyncHash) != "" {
+			state.LastDestinationSyncHash = strings.TrimSpace(result.DestinationSyncHash)
+		}
 		if err = saveState(cfg.StateFile, *state); err != nil {
 			return err
 		}
 		*stateExists = true
 
 		logger.Printf(
-			"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d summary_image_sent=%t summary_stable=%t summary_fmt=%q summary_bytes=%d dry_run=%t",
+			"processed file_id=%s file_name=%q csv_files=%d rows_consolidated=%d rows_imported=%d object_key=%q bytes=%d destination_synced=%t summary_image_sent=%t summary_stable=%t summary_fmt=%q summary_bytes=%d dry_run=%t",
 			file.ID,
 			file.Name,
 			result.CSVFilesProcessed,
@@ -435,6 +453,7 @@ func runCycle(
 			result.RowsImported,
 			result.ObjectKey,
 			result.ObjectBytes,
+			result.DestinationSynced,
 			result.SummaryImageSent,
 			result.SummaryStable,
 			result.SummaryImageFmt,
@@ -452,6 +471,7 @@ func runCycle(
 	status.RowsImported = totalResult.RowsImported
 	status.ObjectKey = lastProcessedCycle.ObjectKey
 	status.ObjectBytes = lastProcessedCycle.ObjectBytes
+	status.DestinationSynced = lastProcessedCycle.DestinationSynced
 	status.SummaryImageSent = lastProcessedCycle.SummaryImageSent
 	status.SummaryStable = lastProcessedCycle.SummaryStable
 	status.SummaryImageFmt = lastProcessedCycle.SummaryImageFmt
@@ -469,6 +489,7 @@ func processZipAndImport(
 	file driveZipFile,
 	zipPath string,
 	sendSummaryAfterImport bool,
+	lastDestinationSyncHash string,
 ) (processResult, error) {
 	var result processResult
 
@@ -659,60 +680,74 @@ func processZipAndImport(
 	}
 
 	if !cfg.DryRun {
-		importTabStates := []destinationImportTabState{
-			{
-				Name:         cfg.DestinationTabPendingRCV,
-				NextSheetRow: 2,
-				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-			},
-			{
-				Name:         cfg.DestinationTabPackedAnotherTO,
-				NextSheetRow: 2,
-				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-			},
-			{
-				Name:         cfg.DestinationTabNoLHPacking,
-				NextSheetRow: 2,
-				PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
-			},
+		snapshotHash, hashErr := buildDestinationSnapshotHash(
+			pendingRCVRows,
+			packedAnotherTORows,
+			noLHPackingRows,
+		)
+		if hashErr != nil {
+			return result, hashErr
 		}
-		for i := range importTabStates {
-			tabState := &importTabStates[i]
-			if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, tabState.Name, &tabState.GridState); err != nil {
-				return result, err
+		result.DestinationSyncHash = snapshotHash
+		if snapshotHash != "" && strings.TrimSpace(snapshotHash) == strings.TrimSpace(lastDestinationSyncHash) {
+			result.DestinationSynced = false
+		} else {
+			importTabStates := []destinationImportTabState{
+				{
+					Name:         cfg.DestinationTabPendingRCV,
+					NextSheetRow: 2,
+					PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+				},
+				{
+					Name:         cfg.DestinationTabPackedAnotherTO,
+					NextSheetRow: 2,
+					PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+				},
+				{
+					Name:         cfg.DestinationTabNoLHPacking,
+					NextSheetRow: 2,
+					PendingRows:  make([][]string, 0, cfg.SheetsBatchSize),
+				},
 			}
-			if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name); err != nil {
-				return result, err
+			for i := range importTabStates {
+				tabState := &importTabStates[i]
+				if err = loadSheetGridState(ctx, sheetsSvc, cfg.DestinationSheetID, tabState.Name, &tabState.GridState); err != nil {
+					return result, err
+				}
+				if err = clearDestinationSheet(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name); err != nil {
+					return result, err
+				}
+				if err = writeHeaderRow(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name, selectedOutputHeaders); err != nil {
+					return result, err
+				}
 			}
-			if err = writeHeaderRow(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, tabState.Name, selectedOutputHeaders); err != nil {
-				return result, err
-			}
-		}
 
-		// Import priority: pending_rcv -> packed_in_another_to -> no_lhpacking.
-		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[0], pendingRCVRows); err != nil {
-			return result, err
-		}
-		if err = updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
-			return result, err
-		}
-		// Send summary strictly after pending_rcv import has completed and before
-		// packed_in_another_to import starts.
-		if sendSummaryAfterImport && cfg.SummarySendEnabled {
-			summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
-			if summaryErr != nil {
-				return result, summaryErr
+			// Import priority: pending_rcv -> packed_in_another_to -> no_lhpacking.
+			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[0], pendingRCVRows); err != nil {
+				return result, err
 			}
-			result.SummaryImageSent = true
-			result.SummaryStable = summaryResult.Stable
-			result.SummaryImageFmt = summaryResult.Format
-			result.SummaryImageBytes = summaryResult.RawBytes
-		}
-		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
-			return result, err
-		}
-		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[2], noLHPackingRows); err != nil {
-			return result, err
+			if err = updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
+				return result, err
+			}
+			// Send summary strictly after pending_rcv import has completed and before
+			// packed_in_another_to import starts.
+			if sendSummaryAfterImport && cfg.SummarySendEnabled {
+				summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
+				if summaryErr != nil {
+					return result, summaryErr
+				}
+				result.SummaryImageSent = true
+				result.SummaryStable = summaryResult.Stable
+				result.SummaryImageFmt = summaryResult.Format
+				result.SummaryImageBytes = summaryResult.RawBytes
+			}
+			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
+				return result, err
+			}
+			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[2], noLHPackingRows); err != nil {
+				return result, err
+			}
+			result.DestinationSynced = true
 		}
 	}
 
@@ -1295,6 +1330,30 @@ func downloadDriveFileToTemp(ctx context.Context, driveSvc *drive.Service, fileI
 		return "", err
 	}
 	return tempFile.Name(), nil
+}
+
+func buildDestinationSnapshotHash(
+	pendingRCVRows [][]string,
+	packedAnotherTORows [][]string,
+	noLHPackingRows [][]string,
+) (string, error) {
+	snapshot := struct {
+		Headers             []string   `json:"headers"`
+		PendingRCVRows      [][]string `json:"pending_rcv_rows"`
+		PackedAnotherTORows [][]string `json:"packed_in_another_to_rows"`
+		NoLHPackingRows     [][]string `json:"no_lhpacking_rows"`
+	}{
+		Headers:             selectedOutputHeaders,
+		PendingRCVRows:      pendingRCVRows,
+		PackedAnotherTORows: packedAnotherTORows,
+		NoLHPackingRows:     noLHPackingRows,
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return "", fmt.Errorf("encode destination snapshot hash payload: %w", err)
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func clearDestinationSheet(ctx context.Context, sheetsSvc *sheets.Service, cfg workflowConfig, sheetID, tab string) error {
