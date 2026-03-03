@@ -153,6 +153,22 @@ func TestSelectPendingZipFilesSameTimestampUsesFileIDCursor(t *testing.T) {
 	}
 }
 
+func TestSelectPendingZipFilesSubSecondTimestampDoesNotRequeueSameFile(t *testing.T) {
+	modified := time.Date(2026, 3, 3, 5, 1, 40, 123000000, time.UTC)
+	files := []driveZipFile{
+		{ID: "zip-a", ModifiedTime: modified},
+	}
+	state := workflowState{
+		LastProcessedFileID:       "zip-a",
+		LastProcessedModifiedTime: modified.Format(time.RFC3339Nano),
+	}
+
+	pending := selectPendingZipFiles(files, state)
+	if len(pending) != 0 {
+		t.Fatalf("expected no pending files, got %#v", pending)
+	}
+}
+
 func TestBuildSheetRangeRefQuotesSpecialTab(t *testing.T) {
 	got := buildSheetRangeRef("[SOC] Backlogs Summary", "B2:Q59")
 	want := "'[SOC] Backlogs Summary'!B2:Q59"

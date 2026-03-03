@@ -357,7 +357,7 @@ func runCycle(
 	if !*stateExists && !cfg.BootstrapProcessExisting {
 		state.LastProcessedFileID = latest.ID
 		state.LastProcessedFileMD5 = latest.MD5Checksum
-		state.LastProcessedModifiedTime = latest.ModifiedTime.Format(time.RFC3339)
+		state.LastProcessedModifiedTime = latest.ModifiedTime.Format(time.RFC3339Nano)
 		state.LastProcessedAt = now.Format(time.RFC3339)
 		if err = saveState(cfg.StateFile, *state); err != nil {
 			return err
@@ -417,7 +417,7 @@ func runCycle(
 
 		state.LastProcessedFileID = file.ID
 		state.LastProcessedFileMD5 = file.MD5Checksum
-		state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339)
+		state.LastProcessedModifiedTime = file.ModifiedTime.Format(time.RFC3339Nano)
 		state.LastProcessedAt = now.Format(time.RFC3339)
 		state.LastUploadedObjectKey = result.ObjectKey
 		if err = saveState(cfg.StateFile, *state); err != nil {
@@ -1622,8 +1622,11 @@ func shouldProcessFile(file driveZipFile, state workflowState, stateExists bool)
 	if file.MD5Checksum != "" && strings.TrimSpace(state.LastProcessedFileMD5) != strings.TrimSpace(file.MD5Checksum) {
 		return true
 	}
-	fileModified := file.ModifiedTime.Format(time.RFC3339)
-	if fileModified != "" && strings.TrimSpace(state.LastProcessedModifiedTime) != strings.TrimSpace(fileModified) {
+	lastModified, ok := parseStoredTimestamp(state.LastProcessedModifiedTime)
+	if !ok {
+		return true
+	}
+	if !file.ModifiedTime.Equal(lastModified) {
 		return true
 	}
 	return false
@@ -1634,8 +1637,8 @@ func selectPendingZipFiles(files []driveZipFile, state workflowState) []driveZip
 		return nil
 	}
 
-	lastModified, err := time.Parse(time.RFC3339, strings.TrimSpace(state.LastProcessedModifiedTime))
-	if err != nil {
+	lastModified, ok := parseStoredTimestamp(state.LastProcessedModifiedTime)
+	if !ok {
 		latest := files[len(files)-1]
 		if shouldProcessFile(latest, state, true) {
 			return []driveZipFile{latest}
@@ -1666,6 +1669,20 @@ func selectPendingZipFiles(files []driveZipFile, state workflowState) []driveZip
 		}
 	}
 	return pending
+}
+
+func parseStoredTimestamp(raw string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	if ts, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+		return ts, true
+	}
+	if ts, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return ts, true
+	}
+	return time.Time{}, false
 }
 
 func normalizeHeaderRecord(header []string, dropLeadingUnnamed bool) ([]string, bool) {
