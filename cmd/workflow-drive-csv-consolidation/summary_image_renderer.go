@@ -121,7 +121,7 @@ var (
 const (
 	minRenderedFontSize     = 4.0
 	maxRenderedFontSize     = 144.0
-	summarySendMinInterval  = 1200 * time.Millisecond
+	summarySendMinInterval  = 1 * time.Second
 	summarySendRetryMax     = 5
 	summarySendRetryBase    = 1 * time.Second
 	summarySendRetryMaxDur  = 8 * time.Second

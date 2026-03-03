@@ -695,6 +695,18 @@ func processZipAndImport(
 		if err = updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
 			return result, err
 		}
+		// Send summary strictly after pending_rcv import has completed and before
+		// packed_in_another_to import starts.
+		if sendSummaryAfterImport && cfg.SummarySendEnabled {
+			summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
+			if summaryErr != nil {
+				return result, summaryErr
+			}
+			result.SummaryImageSent = true
+			result.SummaryStable = summaryResult.Stable
+			result.SummaryImageFmt = summaryResult.Format
+			result.SummaryImageBytes = summaryResult.RawBytes
+		}
 		if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
 			return result, err
 		}
@@ -719,17 +731,6 @@ func processZipAndImport(
 		if err = uploadToR2(ctx, r2Client, cfg.R2Bucket, objectKey, consolidatedFile); err != nil {
 			return result, err
 		}
-	}
-
-	if sendSummaryAfterImport && !cfg.DryRun && cfg.SummarySendEnabled {
-		summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
-		if summaryErr != nil {
-			return result, summaryErr
-		}
-		result.SummaryImageSent = true
-		result.SummaryStable = summaryResult.Stable
-		result.SummaryImageFmt = summaryResult.Format
-		result.SummaryImageBytes = summaryResult.RawBytes
 	}
 
 	return result, nil
