@@ -53,8 +53,8 @@ const (
 
 	defaultSummarySheetTab        = "[SOC] Backlogs Summary"
 	defaultSummaryRange           = "B2:Q59"
-	defaultSummarySecondTab       = "[SOC5] SOCPacked_Dashboard"
-	defaultSummarySecondRanges    = "A1:U9,B142:T167"
+	defaultSummarySecondTab       = "config"
+	defaultSummarySecondRanges    = "E154:Y184"
 	defaultSummaryWaitAfterImport = 8 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3

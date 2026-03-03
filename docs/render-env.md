@@ -117,7 +117,9 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_SUMMARY_RENDER_MODE` | `value` (managed) | `pdf_png` |
 | `WF21_SUMMARY_RENDER_SCALE` | `value` (managed) | `1` |
 | `WF21_SUMMARY_SEATALK_MODE` | `value` (managed) | `bot` |
-| `WF21_SUMMARY_SECOND_IMAGE_ENABLED` | `value` (managed) | `false` |
+| `WF21_SUMMARY_SECOND_IMAGE_ENABLED` | `value` (managed) | `true` |
+| `WF21_SUMMARY_SECOND_RANGES` | `value` (managed) | `E154:Y184` |
+| `WF21_SUMMARY_SECOND_TAB` | `value` (managed) | `config` |
 | `WF21_SUMMARY_SEND_ENABLED` | `value` (managed) | `true` |
 | `WF21_SUMMARY_SHEET_ID` | `value` (managed) | `1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA` |
 | `WF21_SUMMARY_STABILITY_RUNS` | `value` (managed) | `3` |
@@ -135,6 +137,4 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
   - `SEATALK_APP_ID`
   - `SEATALK_APP_SECRET`
   - `SEATALK_BASE_URL`
-  - `WF21_SUMMARY_SECOND_RANGES`
-  - `WF21_SUMMARY_SECOND_TAB`
 

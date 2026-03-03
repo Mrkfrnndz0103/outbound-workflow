@@ -134,7 +134,11 @@ services:
       - key: WF21_SUMMARY_SEATALK_MODE
         value: bot
       - key: WF21_SUMMARY_SECOND_IMAGE_ENABLED
-        value: "false"
+        value: "true"
+      - key: WF21_SUMMARY_SECOND_TAB
+        value: config
+      - key: WF21_SUMMARY_SECOND_RANGES
+        value: E154:Y184
       - key: WF21_SUMMARY_SHEET_ID
         value: 1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA
       - key: WF21_SUMMARY_TAB

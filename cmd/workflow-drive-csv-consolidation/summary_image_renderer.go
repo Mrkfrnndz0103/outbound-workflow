@@ -119,12 +119,12 @@ var (
 )
 
 const (
-	minRenderedFontSize    = 4.0
-	maxRenderedFontSize    = 144.0
-	summarySendMinInterval = 1200 * time.Millisecond
-	summarySendRetryMax    = 5
-	summarySendRetryBase   = 1 * time.Second
-	summarySendRetryMaxDur = 8 * time.Second
+	minRenderedFontSize     = 4.0
+	maxRenderedFontSize     = 144.0
+	summarySendMinInterval  = 1200 * time.Millisecond
+	summarySendRetryMax     = 5
+	summarySendRetryBase    = 1 * time.Second
+	summarySendRetryMaxDur  = 8 * time.Second
 	summarySyncPollInterval = 1 * time.Second
 	summarySyncMaxWait      = 30 * time.Second
 )
@@ -193,20 +193,41 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	result.RawBytes = primaryImage.RawBytes
 
 	if cfg.SummarySecondEnabled {
-		secondaryImage, secondaryErr := buildEncodedConnectedSummaryImage(
-			ctx,
-			cfg,
-			sheetsSvc,
-			exportHTTPClient,
-			cfg.SummarySheetID,
-			cfg.SummarySecondTab,
-			cfg.SummarySecondRanges,
-			cfg.SummaryImageMaxWidthPx,
-			cfg.SummaryRenderScale,
-			cfg.SummaryAutoFitColumns,
-			cfg.SummaryImageMaxBase64,
-			"secondary",
+		var (
+			secondaryImage encodedSummaryImage
+			secondaryErr   error
 		)
+		if len(cfg.SummarySecondRanges) == 1 {
+			secondaryImage, secondaryErr = buildEncodedSummaryImage(
+				ctx,
+				cfg,
+				sheetsSvc,
+				exportHTTPClient,
+				cfg.SummarySheetID,
+				cfg.SummarySecondTab,
+				cfg.SummarySecondRanges[0],
+				cfg.SummaryImageMaxWidthPx,
+				cfg.SummaryRenderScale,
+				cfg.SummaryAutoFitColumns,
+				cfg.SummaryImageMaxBase64,
+				"secondary",
+			)
+		} else {
+			secondaryImage, secondaryErr = buildEncodedConnectedSummaryImage(
+				ctx,
+				cfg,
+				sheetsSvc,
+				exportHTTPClient,
+				cfg.SummarySheetID,
+				cfg.SummarySecondTab,
+				cfg.SummarySecondRanges,
+				cfg.SummaryImageMaxWidthPx,
+				cfg.SummaryRenderScale,
+				cfg.SummaryAutoFitColumns,
+				cfg.SummaryImageMaxBase64,
+				"secondary",
+			)
+		}
 		if secondaryErr != nil {
 			return result, secondaryErr
 		}
