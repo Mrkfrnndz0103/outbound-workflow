@@ -67,7 +67,9 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 
 ## go-bot-workflow-drive-csv-consolidation
 
-- Build command: `go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation`
+- Build command: ``
+- Dockerfile: `./cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- Docker context: `.`
 - Workflow source: `cmd/workflow-drive-csv-consolidation`
 
 ### Render Vars (`render.yaml`)
@@ -109,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_SUMMARY_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `90` |
 | `WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES` | `value` (managed) | `5242880` |
 | `WF21_SUMMARY_IMAGE_MAX_WIDTH_PX` | `value` (managed) | `1800` |
-| `WF21_SUMMARY_PDF_CONVERTER` | `value` (managed) | `auto` |
+| `WF21_SUMMARY_PDF_CONVERTER` | `value` (managed) | `pdftoppm` |
 | `WF21_SUMMARY_PDF_DPI` | `value` (managed) | `180` |
 | `WF21_SUMMARY_RANGE` | `value` (managed) | `B2:Q59` |
 | `WF21_SUMMARY_RENDER_MODE` | `value` (managed) | `pdf_png` |

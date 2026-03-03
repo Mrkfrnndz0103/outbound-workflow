@@ -79,12 +79,12 @@ services:
 
   - type: web
     name: go-bot-workflow-drive-csv-consolidation
-    runtime: go
+    runtime: docker
     plan: free
     autoDeploy: true
     healthCheckPath: /healthz
-    buildCommand: go build -o bin/workflow-drive-csv-consolidation ./cmd/workflow-drive-csv-consolidation
-    startCommand: command -v pdftoppm; command -v magick; ./bin/workflow-drive-csv-consolidation
+    dockerfilePath: ./cmd/workflow-drive-csv-consolidation/Dockerfile.render
+    dockerContext: .
     
     envVars:
       - key: WF21_GOOGLE_CREDENTIALS_FILE
@@ -158,7 +158,7 @@ services:
       - key: WF21_SUMMARY_PDF_DPI
         value: "180"
       - key: WF21_SUMMARY_PDF_CONVERTER
-        value: auto
+        value: pdftoppm
       - key: WF21_SUMMARY_IMAGE_MAX_WIDTH_PX
         value: "1800"
       - key: WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES

@@ -33,6 +33,8 @@ type RenderService = {
   name?: string;
   buildCommand?: string;
   startCommand?: string;
+  dockerfilePath?: string;
+  dockerContext?: string;
   envVars?: RenderEnvVar[];
 };
 
@@ -54,6 +56,7 @@ type TreeEntry = {
 const ENV_KEY_RE =
   /\b(?:WF\d+_[A-Z0-9_]+|SEATALK_[A-Z0-9_]+|GOOGLE_APPLICATION_CREDENTIALS|PORT)\b/g;
 const CMD_DIR_RE = /\.\/cmd\/([a-zA-Z0-9\-_]+)/;
+const DOCKER_DIR_RE = /(?:^|[/\\])cmd[/\\]([a-zA-Z0-9\-_]+)(?:[/\\]|$)/;
 const PREFIX_KEY_RE = /^(WF\d+)_/;
 
 const SHARED_KEY_SET = new Set([
@@ -204,7 +207,9 @@ async function buildRenderEnvDoc(
   for (const svc of services) {
     const name = svc.name?.trim() || "(unnamed service)";
     const buildCommand = svc.buildCommand?.trim() || "";
-    const cmdDir = inferCmdDir(buildCommand);
+    const dockerfilePath = svc.dockerfilePath?.trim() || "";
+    const dockerContext = svc.dockerContext?.trim() || "";
+    const cmdDir = inferCmdDir(buildCommand, dockerfilePath);
 
     const renderVars = (svc.envVars ?? [])
       .map((v) => ({
@@ -218,6 +223,12 @@ async function buildRenderEnvDoc(
     lines.push(`## ${name}`);
     lines.push("");
     lines.push(`- Build command: \`${buildCommand}\``);
+    if (dockerfilePath) {
+      lines.push(`- Dockerfile: \`${dockerfilePath}\``);
+    }
+    if (dockerContext) {
+      lines.push(`- Docker context: \`${dockerContext}\``);
+    }
     if (cmdDir) {
       lines.push(`- Workflow source: \`${cmdDir}\``);
     }
@@ -267,12 +278,16 @@ async function buildRenderEnvDoc(
   return `${lines.join("\n")}\n`;
 }
 
-function inferCmdDir(buildCommand: string): string {
+function inferCmdDir(buildCommand: string, dockerfilePath: string): string {
   const match = buildCommand.match(CMD_DIR_RE);
-  if (!match || !match[1]) {
-    return "";
+  if (match && match[1]) {
+    return `cmd/${match[1]}`;
   }
-  return `cmd/${match[1]}`;
+  const dockerMatch = dockerfilePath.match(DOCKER_DIR_RE);
+  if (dockerMatch && dockerMatch[1]) {
+    return `cmd/${dockerMatch[1]}`;
+  }
+  return "";
 }
 
 function renderMode(v: { value?: unknown; sync?: boolean }): string {

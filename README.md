@@ -396,6 +396,9 @@ go run ./cmd/workflow-drive-csv-consolidation
 
 Use the included `render.yaml` blueprint to deploy as a web service.
 
+Note:
+- `go-bot-workflow-drive-csv-consolidation` is configured with `runtime: docker` and uses `cmd/workflow-drive-csv-consolidation/Dockerfile.render`, which installs `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`.
+
 1. Push this repo to GitHub.
 2. In Render, create a new Blueprint and select the repo.
 3. Set secret env vars in Render:
