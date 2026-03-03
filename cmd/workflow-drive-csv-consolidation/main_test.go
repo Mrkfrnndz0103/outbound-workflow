@@ -196,6 +196,15 @@ func TestBuildSummaryCaptionForBot(t *testing.T) {
 	}
 }
 
+func TestFormatSummarySyncTimestamp(t *testing.T) {
+	ts := time.Date(2026, 3, 4, 17, 9, 45, 0, time.UTC)
+	got := formatSummarySyncTimestamp(ts)
+	want := "17:09:45 03-04"
+	if got != want {
+		t.Fatalf("unexpected sync timestamp format: got=%q want=%q", got, want)
+	}
+}
+
 func TestCurrentSummaryCaptionTimeUsesConfiguredLocation(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Manila")
 	if err != nil {

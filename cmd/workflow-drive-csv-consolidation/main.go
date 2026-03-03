@@ -47,7 +47,7 @@ const (
 	defaultStateFile  = "data/workflow2-1-drive-csv-consolidation-state.json"
 	defaultStatusFile = "data/workflow2-1-drive-csv-consolidation-status.json"
 
-	defaultPollInterval                = 30 * time.Second
+	defaultPollInterval                = 3 * time.Second
 	defaultSheetsBatch                 = 7000
 	defaultR2ObjectPrefx               = "wf2-1"
 	defaultSheetsWriteRetryMaxAttempts = 6
@@ -58,7 +58,7 @@ const (
 	defaultSummaryRange           = "B2:Q59"
 	defaultSummarySecondTab       = "config"
 	defaultSummarySecondRanges    = "E154:Y184"
-	defaultSummaryWaitAfterImport = 8 * time.Second
+	defaultSummaryWaitAfterImport = 5 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
 	defaultSummaryRenderMode      = "styled"
@@ -722,15 +722,18 @@ func processZipAndImport(
 				}
 			}
 
-			// Import priority: pending_rcv -> packed_in_another_to -> no_lhpacking.
+			// Import priority: pending_rcv -> packed_in_another_to.
+			// Summary sync/snapshot happens before no_lhpacking import.
 			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[0], pendingRCVRows); err != nil {
+				return result, err
+			}
+			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
 				return result, err
 			}
 			if err = updateSummarySyncCell(ctx, cfg, sheetsSvc); err != nil {
 				return result, err
 			}
-			// Send summary strictly after pending_rcv import has completed and before
-			// packed_in_another_to import starts.
+			// sendSummarySnapshotToSeaTalk includes SummaryWaitAfterImport delay.
 			if sendSummaryAfterImport && cfg.SummarySendEnabled {
 				summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
 				if summaryErr != nil {
@@ -740,9 +743,6 @@ func processZipAndImport(
 				result.SummaryStable = summaryResult.Stable
 				result.SummaryImageFmt = summaryResult.Format
 				result.SummaryImageBytes = summaryResult.RawBytes
-			}
-			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[1], packedAnotherTORows); err != nil {
-				return result, err
 			}
 			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[2], noLHPackingRows); err != nil {
 				return result, err
@@ -989,8 +989,8 @@ func loadConfig() (workflowConfig, error) {
 		),
 	}
 
-	if cfg.PollInterval < 5*time.Second {
-		cfg.PollInterval = 5 * time.Second
+	if cfg.PollInterval < 3*time.Second {
+		cfg.PollInterval = 3 * time.Second
 	}
 	if cfg.SheetsBatchSize < 100 {
 		cfg.SheetsBatchSize = 100

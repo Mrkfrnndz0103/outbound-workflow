@@ -122,7 +122,7 @@ services:
       - key: WF21_HEALTH_PORT
         value: ""
       - key: WF21_POLL_INTERVAL_SECONDS
-        value: "1"
+        value: "3"
       - key: WF21_SHEETS_BATCH_SIZE
         value: "7000"
       - key: WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS
@@ -152,7 +152,7 @@ services:
       - key: WF21_SUMMARY_SYNC_CELL
         value: config!B1
       - key: WF21_SUMMARY_WAIT_SECONDS
-        value: "8"
+        value: "5"
       - key: WF21_SUMMARY_STABILITY_RUNS
         value: "3"
       - key: WF21_SUMMARY_STABILITY_WAIT_SECONDS

@@ -317,9 +317,9 @@ func updateSummarySyncCell(ctx context.Context, cfg workflowConfig, sheetsSvc *s
 	if cfg.SummaryLocation != nil {
 		now = now.In(cfg.SummaryLocation)
 	}
-	timestamp := now.Format("2006-01-02 15:04:05.000000 MST")
+	timestamp := formatSummarySyncTimestamp(now)
 	if strings.TrimSpace(previousValue) == timestamp {
-		timestamp = now.Format(time.RFC3339Nano)
+		timestamp = formatSummarySyncTimestamp(now.Add(1 * time.Second))
 	}
 
 	body := &sheets.ValueRange{
@@ -366,6 +366,11 @@ func readSheetCellValue(ctx context.Context, sheetsSvc *sheets.Service, sheetID,
 		return "", nil
 	}
 	return strings.TrimSpace(fmt.Sprint(resp.Values[0][0])), nil
+}
+
+func formatSummarySyncTimestamp(ts time.Time) string {
+	// Target format requested by operations: hh:mm:ss mm-dd (24-hour clock).
+	return ts.Format("15:04:05 01-02")
 }
 
 func isRetryableSummarySendError(err error) bool {

@@ -94,7 +94,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
 | `WF21_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
 | `WF21_HEALTH_PORT` | `value` (managed) | `""` |
-| `WF21_POLL_INTERVAL_SECONDS` | `value` (managed) | `1` |
+| `WF21_POLL_INTERVAL_SECONDS` | `value` (managed) | `3` |
 | `WF21_R2_ACCESS_KEY_ID` | `sync: false` (unmanaged/secret) | - |
 | `WF21_R2_ACCOUNT_ID` | `sync: false` (unmanaged/secret) | - |
 | `WF21_R2_BUCKET` | `sync: false` (unmanaged/secret) | - |
@@ -130,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 | `WF21_SUMMARY_STABILITY_WAIT_SECONDS` | `value` (managed) | `2` |
 | `WF21_SUMMARY_SYNC_CELL` | `value` (managed) | `config!B1` |
 | `WF21_SUMMARY_TAB` | `value` (managed) | `[SOC] Backlogs Summary` |
-| `WF21_SUMMARY_WAIT_SECONDS` | `value` (managed) | `8` |
+| `WF21_SUMMARY_WAIT_SECONDS` | `value` (managed) | `5` |
 | `WF21_TEMP_DIR` | `value` (managed) | `""` |
 | `WF21_TIMEZONE` | `value` (managed) | `Asia/Manila` |
 

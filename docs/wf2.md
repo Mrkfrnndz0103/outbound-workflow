@@ -100,7 +100,7 @@ Imported output columns (in order):
 - `WF21_CONTINUOUS` (default `true`)
 - `WF21_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF21_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
-- `WF21_POLL_INTERVAL_SECONDS` (default `30`)
+- `WF21_POLL_INTERVAL_SECONDS` (default `3`)
 - `WF21_SHEETS_BATCH_SIZE` (default `7000`)
 - `WF21_SHEETS_WRITE_RETRY_MAX_ATTEMPTS` (default `6`)
 - `WF21_SHEETS_WRITE_RETRY_BASE_MS` (default `1000`)
@@ -115,7 +115,7 @@ Imported output columns (in order):
 - `WF21_SUMMARY_SHEET_ID` (default `WF21_DESTINATION_SHEET_ID`)
 - `WF21_SUMMARY_TAB` (default `[SOC] Backlogs Summary`)
 - `WF21_SUMMARY_RANGE` (default `B2:Q59`)
-- `WF21_SUMMARY_WAIT_SECONDS` (default `8`)
+- `WF21_SUMMARY_WAIT_SECONDS` (default `5`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
 - `WF21_SUMMARY_RENDER_MODE` (default `styled`; `pdf_png` uses Google Sheets PDF export -> PNG conversion for closer visual fidelity)
@@ -155,6 +155,6 @@ Watch mode:
 
 ```powershell
 $env:WF21_CONTINUOUS = "true"
-$env:WF21_POLL_INTERVAL_SECONDS = "30"
+$env:WF21_POLL_INTERVAL_SECONDS = "3"
 go run ./cmd/workflow-drive-csv-consolidation
 ```
