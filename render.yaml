@@ -83,7 +83,7 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /healthz
-    dockerfilePath: ./cmd/workflow-drive-csv-consolidation/Dockerfile.render
+    dockerfilePath: cmd/workflow-drive-csv-consolidation/Dockerfile.render
     dockerContext: .
     
     envVars:

@@ -68,7 +68,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 ## go-bot-workflow-drive-csv-consolidation
 
 - Build command: ``
-- Dockerfile: `./cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- Dockerfile: `cmd/workflow-drive-csv-consolidation/Dockerfile.render`
 - Docker context: `.`
 - Workflow source: `cmd/workflow-drive-csv-consolidation`
 
