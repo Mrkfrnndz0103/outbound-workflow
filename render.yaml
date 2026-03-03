@@ -138,7 +138,7 @@ services:
       - key: WF21_SUMMARY_SECOND_TAB
         value: config
       - key: WF21_SUMMARY_SECOND_RANGES
-        value: E154:Y184
+        value: E157:Y190
       - key: WF21_SUMMARY_SHEET_ID
         value: 1mdi-8ACluDHGZ7yAyNLwXLwpmQ4f6VAx3kpbaJORViA
       - key: WF21_SUMMARY_TAB
