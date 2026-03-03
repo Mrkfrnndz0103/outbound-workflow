@@ -206,7 +206,7 @@ services:
   - type: cron
     name: go-bot-sync-bot-config-groups
     runtime: go
-    plan: free
+    plan: starter
     autoDeploy: true
     schedule: "0 0 * * *"
     buildCommand: go build -o bin/bot-config-group-sync ./cmd/bot-config-group-sync
