@@ -1,0 +1,26 @@
+If your bot is already added to a group, you do not need to ask the group owner for the group chat ID. You can acquire the group chat ID using the following methods:
+
+1. Event Callback When Bot Is Added:
+   - When your bot is added to a group chat, SeaTalk triggers the Bot Added to Group Chat event callback. This event contains the group chat ID.
+   - Reference: https://open.seatalk.io/docs/event-bot-added-to-group-chat
+
+2. Get Joined Group Chat List API:
+   - You can use the Get Joined Group Chat List API to retrieve all group chats your bot has joined, including their IDs.
+   - Endpoint:
+     ```
+     GET https://openapi.seatalk.io/messaging/v2/group_chat/joined
+     ```
+   - Documentation: https://open.seatalk.io/docs/Get-Joined-Group-Chat-List
+
+3. Get Group Info API:
+   - If you already have a group ID, you can use the Get Group Info API to get more details about the group.
+   - Documentation: https://open.seatalk.io/docs/get-group-info
+
+Summary:
+
+You do not need to contact the group owner. Use the event callback or the API to programmatically obtain the group chat ID for any group your bot is a member of.
+
+Reference:
+- https://open.seatalk.io/docs/event-bot-added-to-group-chat
+- https://open.seatalk.io/docs/Get-Joined-Group-Chat-List
+- https://open.seatalk.io/docs/get-group-info

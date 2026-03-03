@@ -1,10 +1,12 @@
-# Bot Sent Messages Group Chats
-Workflow 2.1
-    Group ID: NTMwNTQyNTc2OTg4, 
-    AppID: Mjk2ODA1MDg0MTMw
-    AppSecret: 76M-5_OcQrcsCQpK1Klpd0KN2f8RHUk9
+read
+sheet_id:1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc
+tab_name: bot_config
+header_name: (row1)
+bot_mode: (bot, webhook)
+workflow: (wf tag name)
+target_group: group id
+app_id
+app_secret
+signing_secret
 
-Workflow 2.2
-    Group ID: NTMwNTQyNTc2OTg4
-    AppID: Mjk2ODA1MDg0MTMw
-    AppSecret: 76M-5_OcQrcsCQpK1Klpd0KN2f8RHUk9
+plan this first how to implement
