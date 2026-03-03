@@ -1,9 +1,10 @@
 # Bot Sent Messages Group Chats
 Workflow 2.1
-    Group ID: NTMwNTQyNTc2OTg4
+    Group ID: NTMwNTQyNTc2OTg4, 
     AppID: Mjk2ODA1MDg0MTMw
     AppSecret: 76M-5_OcQrcsCQpK1Klpd0KN2f8RHUk9
 
+Workflow 2.2
     Group ID: NTMwNTQyNTc2OTg4
     AppID: Mjk2ODA1MDg0MTMw
     AppSecret: 76M-5_OcQrcsCQpK1Klpd0KN2f8RHUk9

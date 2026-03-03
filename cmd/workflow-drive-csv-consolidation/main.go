@@ -224,6 +224,11 @@ func main() {
 	if err != nil {
 		logger.Fatalf("config error: %v", err)
 	}
+	if identityHint, hintErr := googleCredentialsIdentityHint(cfg); hintErr != nil {
+		logger.Printf("google credentials identity hint unavailable err=%v", hintErr)
+	} else {
+		logger.Printf("google credentials identity %s", identityHint)
+	}
 
 	state, stateExists, err := loadState(cfg.StateFile)
 	if err != nil {
@@ -1047,6 +1052,88 @@ func parseSummaryRangeList(raw string) ([]string, error) {
 		ranges = append(ranges, token)
 	}
 	return ranges, nil
+}
+
+func googleCredentialsIdentityHint(cfg workflowConfig) (string, error) {
+	raw := strings.TrimSpace(cfg.GoogleCredentialsJSON)
+	source := ""
+	if raw != "" {
+		source = "WF21_GOOGLE_CREDENTIALS_JSON"
+	} else if strings.TrimSpace(cfg.GoogleCredentialsFile) != "" {
+		fileRaw, err := os.ReadFile(cfg.GoogleCredentialsFile)
+		if err != nil {
+			return "", fmt.Errorf("read credentials file: %w", err)
+		}
+		raw = strings.TrimSpace(string(fileRaw))
+		source = "file:" + filepath.Base(cfg.GoogleCredentialsFile)
+	} else {
+		return "", errors.New("no google credentials source configured")
+	}
+
+	var parsed struct {
+		Type        string `json:"type"`
+		ProjectID   string `json:"project_id"`
+		ClientEmail string `json:"client_email"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return "", fmt.Errorf("parse credentials json: %w", err)
+	}
+
+	credType := firstNonEmpty(strings.TrimSpace(parsed.Type), "unknown")
+	project := firstNonEmpty(strings.TrimSpace(parsed.ProjectID), "unknown")
+	clientEmail := strings.TrimSpace(parsed.ClientEmail)
+	if clientEmail == "" {
+		return fmt.Sprintf(
+			"source=%s type=%s project=%s client_email=missing",
+			source,
+			credType,
+			maskIdentityToken(project, 4),
+		), nil
+	}
+
+	return fmt.Sprintf(
+		"source=%s type=%s project=%s client_email=%s",
+		source,
+		credType,
+		maskIdentityToken(project, 4),
+		maskServiceAccountEmail(clientEmail),
+	), nil
+}
+
+func maskServiceAccountEmail(email string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(email))
+	parts := strings.Split(trimmed, "@")
+	if len(parts) != 2 {
+		return maskIdentityToken(trimmed, 6)
+	}
+
+	localPart := maskIdentityToken(parts[0], 6)
+	domainPart := maskDomain(parts[1])
+	return localPart + "@" + domainPart
+}
+
+func maskDomain(domain string) string {
+	labels := strings.Split(strings.TrimSpace(strings.ToLower(domain)), ".")
+	if len(labels) == 0 {
+		return ""
+	}
+	labels[0] = maskIdentityToken(labels[0], 4)
+	return strings.Join(labels, ".")
+}
+
+func maskIdentityToken(v string, keep int) string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return ""
+	}
+	runes := []rune(trimmed)
+	if keep < 0 {
+		keep = 0
+	}
+	if len(runes) <= keep {
+		return trimmed
+	}
+	return string(runes[:keep]) + "***"
 }
 
 func newGoogleServices(ctx context.Context, cfg workflowConfig) (*drive.Service, *sheets.Service, error) {

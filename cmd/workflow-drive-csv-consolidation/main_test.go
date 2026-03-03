@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,6 +207,40 @@ func TestClampRenderedFontSize(t *testing.T) {
 	}
 	if got := clampRenderedFontSize(18); got != 18 {
 		t.Fatalf("expected unchanged font size 18, got %v", got)
+	}
+}
+
+func TestMaskServiceAccountEmail(t *testing.T) {
+	input := "outbound-automation@soc-5-operations.iam.gserviceaccount.com"
+	got := maskServiceAccountEmail(input)
+	if got == input {
+		t.Fatalf("expected masked email, got unmasked value")
+	}
+	if !strings.HasPrefix(got, "outbou***@soc-***") {
+		t.Fatalf("unexpected masked format: %q", got)
+	}
+}
+
+func TestGoogleCredentialsIdentityHintFromJSON(t *testing.T) {
+	cfg := workflowConfig{
+		GoogleCredentialsJSON: `{
+			"type": "service_account",
+			"project_id": "soc-5-operations",
+			"client_email": "outbound-automation@soc-5-operations.iam.gserviceaccount.com"
+		}`,
+	}
+	hint, err := googleCredentialsIdentityHint(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(hint, "source=WF21_GOOGLE_CREDENTIALS_JSON") {
+		t.Fatalf("unexpected source in hint: %q", hint)
+	}
+	if strings.Contains(hint, "outbound-automation@soc-5-operations.iam.gserviceaccount.com") {
+		t.Fatalf("hint leaked full email: %q", hint)
+	}
+	if !strings.Contains(hint, "client_email=outbou***@soc-***.iam.gserviceaccount.com") {
+		t.Fatalf("unexpected masked client_email in hint: %q", hint)
 	}
 }
 

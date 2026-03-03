@@ -452,7 +452,21 @@ func renderSummaryRangeToPNG(
 	autoFitColumns bool,
 ) ([]byte, error) {
 	if cfg.SummaryRenderMode == "pdf_png" {
-		return renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, captureRange)
+		pngRaw, err := renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, captureRange)
+		if err == nil {
+			return pngRaw, nil
+		}
+		if !isPDFExportAccessDenied(err) {
+			return nil, err
+		}
+
+		// Fallback: if docs export is denied for this identity, use styled renderer
+		// so cycle processing and SeaTalk sending can continue.
+		styledRange, styledErr := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
+		if styledErr != nil {
+			return nil, fmt.Errorf("pdf export access denied and styled fallback failed: %w (original: %v)", styledErr, err)
+		}
+		return renderStyledRangeImage(styledRange, maxWidthPx, renderScale, autoFitColumns)
 	}
 
 	styledRange, err := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
@@ -499,6 +513,13 @@ func renderConnectedSummaryRangesToPNG(
 		}
 		pngRaw, err := renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, rng)
 		if err != nil {
+			if isPDFExportAccessDenied(err) {
+				connectedData, styledErr := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
+				if styledErr != nil {
+					return nil, fmt.Errorf("pdf export access denied and styled fallback failed: %w (original: %v)", styledErr, err)
+				}
+				return renderStyledRangeImage(connectedData, maxWidthPx, renderScale, autoFitColumns)
+			}
 			return nil, err
 		}
 		img, _, err := image.Decode(bytes.NewReader(pngRaw))
@@ -548,6 +569,19 @@ func renderConnectedSummaryRangesToPNG(
 		return nil, fmt.Errorf("encode connected pdf->png composition: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func isPDFExportAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	if !strings.Contains(low, "status=403") {
+		return false
+	}
+	return strings.Contains(low, "access denied") ||
+		strings.Contains(low, "you need access") ||
+		strings.Contains(low, "forbidden")
 }
 
 func renderRangeViaPDFPNG(
