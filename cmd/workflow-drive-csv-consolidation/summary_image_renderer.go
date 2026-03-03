@@ -1672,7 +1672,12 @@ func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderS
 	if strings.EqualFold(cell.WrapStrategy, "WRAP") {
 		lines = wrapTextToWidth(text, face, maxTextWidth)
 	} else {
-		lines = []string{ellipsizeToWidth(text, face, maxTextWidth)}
+		if fittedFace, ok := fitClipTextFace(cell, text, textScale, maxTextWidth); ok && fittedFace != nil {
+			face = fittedFace
+			lines = []string{text}
+		} else {
+			lines = []string{ellipsizeToWidth(text, face, maxTextWidth)}
+		}
 	}
 	if len(lines) == 0 {
 		return
@@ -1737,6 +1742,43 @@ func drawCellText(dst draw.Image, rect image.Rectangle, cell styledCell, renderS
 			fillRect(dst, image.Rect(x, strikeY, minInt(x+textWidth, rect.Max.X-1), minInt(strikeY+decorationThickness, rect.Max.Y)), cell.Foreground)
 		}
 	}
+}
+
+func fitClipTextFace(cell styledCell, text string, textScale float64, maxTextWidth int) (font.Face, bool) {
+	if maxTextWidth <= 0 {
+		return nil, false
+	}
+	baseSize := cell.FontSize
+	if baseSize <= 0 {
+		baseSize = 10
+	}
+	targetSize := clampRenderedFontSize(baseSize * textScale)
+	minSizeTarget := targetSize * 0.55
+	if minSizeTarget < minRenderedFontSize {
+		minSizeTarget = minRenderedFontSize
+	}
+	minSize := clampRenderedFontSize(minSizeTarget)
+	if minSize > targetSize {
+		minSize = targetSize
+	}
+
+	fit := func(size float64) (font.Face, bool) {
+		face := loadFace(cell.FontFamily, cell.Bold, cell.Italic, size)
+		if face == nil {
+			face = basicfont.Face7x13
+		}
+		return face, font.MeasureString(face, text).Ceil() <= maxTextWidth
+	}
+
+	if face, ok := fit(targetSize); ok {
+		return face, true
+	}
+	for size := targetSize - 0.5; size >= minSize; size -= 0.5 {
+		if face, ok := fit(size); ok {
+			return face, true
+		}
+	}
+	return nil, false
 }
 
 func drawCellBorders(dst draw.Image, rect image.Rectangle, borders styledBorders, renderScale int) {

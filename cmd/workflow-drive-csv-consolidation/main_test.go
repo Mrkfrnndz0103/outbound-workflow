@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/image/font"
 	"google.golang.org/api/googleapi"
 )
 
@@ -257,6 +258,41 @@ func TestGoogleCredentialsIdentityHintFromJSON(t *testing.T) {
 	}
 	if !strings.Contains(hint, "client_email=outbou***@soc-***.iam.gserviceaccount.com") {
 		t.Fatalf("unexpected masked client_email in hint: %q", hint)
+	}
+}
+
+func TestFitClipTextFaceShrinksToFit(t *testing.T) {
+	cell := defaultStyledCell()
+	cell.FontSize = 10
+	text := "167,898"
+	baseFace := loadFace(cell.FontFamily, cell.Bold, cell.Italic, cell.FontSize)
+	if baseFace == nil {
+		t.Fatalf("expected base font face")
+	}
+	baseWidth := font.MeasureString(baseFace, text).Ceil()
+	if baseWidth < 12 {
+		t.Fatalf("unexpectedly small base width: %d", baseWidth)
+	}
+
+	targetWidth := baseWidth - 8
+	face, ok := fitClipTextFace(cell, text, 1.0, targetWidth)
+	if !ok {
+		t.Fatalf("expected text to fit by shrinking font")
+	}
+	if face == nil {
+		t.Fatalf("expected fitted font face")
+	}
+	fittedWidth := font.MeasureString(face, text).Ceil()
+	if fittedWidth > targetWidth {
+		t.Fatalf("expected fitted width <= target (%d), got %d", targetWidth, fittedWidth)
+	}
+}
+
+func TestFitClipTextFaceReturnsFalseWhenTooNarrow(t *testing.T) {
+	cell := defaultStyledCell()
+	cell.FontSize = 10
+	if face, ok := fitClipTextFace(cell, "167,898", 1.0, 2); ok || face != nil {
+		t.Fatalf("expected no fit for extremely narrow width")
 	}
 }
 
