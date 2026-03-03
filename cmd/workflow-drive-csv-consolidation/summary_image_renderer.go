@@ -720,7 +720,153 @@ func convertPDFToPNG(ctx context.Context, pdfRaw []byte, dpi int, converter, tem
 	if err != nil {
 		return nil, fmt.Errorf("read converted png file: %w", err)
 	}
+	normalizedPNG, normalizeErr := normalizePDFPNGBottomMargin(pngRaw)
+	if normalizeErr == nil && len(normalizedPNG) > 0 {
+		pngRaw = normalizedPNG
+	}
 	return pngRaw, nil
+}
+
+func normalizePDFPNGBottomMargin(pngRaw []byte) ([]byte, error) {
+	src, _, err := image.Decode(bytes.NewReader(pngRaw))
+	if err != nil {
+		return nil, fmt.Errorf("decode png for margin normalization: %w", err)
+	}
+	b := src.Bounds()
+	if b.Dx() < 8 || b.Dy() < 8 {
+		return pngRaw, nil
+	}
+
+	bg := pdfTopBorderColor(src, b)
+	topPad := countTopBackgroundRows(src, b, bg)
+	bottomPad := countBottomBackgroundRows(src, b, bg)
+
+	// Only normalize when bottom page padding is materially larger than top padding.
+	const minExtraBottomRows = 24
+	if bottomPad <= topPad+minExtraBottomRows {
+		return pngRaw, nil
+	}
+
+	targetBottomPad := topPad
+	removeRows := bottomPad - targetBottomPad
+	newMaxY := b.Max.Y - removeRows
+	if newMaxY <= b.Min.Y+1 {
+		return pngRaw, nil
+	}
+
+	cropRect := image.Rect(b.Min.X, b.Min.Y, b.Max.X, newMaxY)
+	cropped := image.NewRGBA(image.Rect(0, 0, cropRect.Dx(), cropRect.Dy()))
+	draw.Draw(cropped, cropped.Bounds(), src, cropRect.Min, draw.Src)
+
+	var out bytes.Buffer
+	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	if err = enc.Encode(&out, cropped); err != nil {
+		return nil, fmt.Errorf("encode normalized png: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+func pdfTopBorderColor(img image.Image, b image.Rectangle) color.RGBA {
+	topY := b.Min.Y
+	leftX := b.Min.X
+	rightX := b.Max.X - 1
+	centerX := b.Min.X + b.Dx()/2
+	return mostCommonColor(
+		pdfColorRGBA(img.At(leftX, topY)),
+		pdfColorRGBA(img.At(centerX, topY)),
+		pdfColorRGBA(img.At(rightX, topY)),
+	)
+}
+
+func countTopBackgroundRows(img image.Image, b image.Rectangle, bg color.RGBA) int {
+	rows := 0
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		if !rowMostlyBackground(img, y, b.Min.X, b.Max.X-1, bg) {
+			break
+		}
+		rows++
+	}
+	return rows
+}
+
+func countBottomBackgroundRows(img image.Image, b image.Rectangle, bg color.RGBA) int {
+	rows := 0
+	for y := b.Max.Y - 1; y >= b.Min.Y; y-- {
+		if !rowMostlyBackground(img, y, b.Min.X, b.Max.X-1, bg) {
+			break
+		}
+		rows++
+	}
+	return rows
+}
+
+func rowMostlyBackground(img image.Image, y, minX, maxX int, bg color.RGBA) bool {
+	const (
+		maxDeltaPerChannel = 12
+		minMatchRatio      = 0.995
+	)
+	width := maxX - minX + 1
+	if width <= 0 {
+		return false
+	}
+	matches := 0
+	for x := minX; x <= maxX; x++ {
+		c := pdfColorRGBA(img.At(x, y))
+		if pdfColorNear(c, bg, maxDeltaPerChannel) {
+			matches++
+		}
+	}
+	return float64(matches)/float64(width) >= minMatchRatio
+}
+
+func mostCommonColor(colors ...color.RGBA) color.RGBA {
+	type key struct {
+		r uint8
+		g uint8
+		b uint8
+	}
+	counts := map[key]int{}
+	values := map[key]color.RGBA{}
+	for _, c := range colors {
+		k := key{r: c.R >> 2, g: c.G >> 2, b: c.B >> 2}
+		counts[k]++
+		values[k] = c
+	}
+
+	var (
+		bestKey   key
+		bestCount int
+	)
+	for k, v := range counts {
+		if v > bestCount {
+			bestKey = k
+			bestCount = v
+		}
+	}
+	return values[bestKey]
+}
+
+func pdfColorNear(a, b color.RGBA, maxDelta uint8) bool {
+	return pdfAbsInt(int(a.R)-int(b.R)) <= int(maxDelta) &&
+		pdfAbsInt(int(a.G)-int(b.G)) <= int(maxDelta) &&
+		pdfAbsInt(int(a.B)-int(b.B)) <= int(maxDelta)
+}
+
+func pdfColorRGBA(c color.Color) color.RGBA {
+	r, g, b, a := c.RGBA()
+	return color.RGBA{
+		R: uint8(r >> 8),
+		G: uint8(g >> 8),
+		B: uint8(b >> 8),
+		A: uint8(a >> 8),
+	}
+}
+
+func pdfAbsInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func resolvePDFConverter(preferred string) (string, error) {
