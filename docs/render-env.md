@@ -23,6 +23,8 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 
 | Key | Management | Value |
 | --- | --- | --- |
+| `BOT_CONFIG_SHEET_ID` | `value` (managed) | `1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc` |
+| `BOT_CONFIG_TAB` | `value` (managed) | `bot_config` |
 | `SEATALK_SYSTEM_WEBHOOK_URL` | `sync: false` (unmanaged/secret) | - |
 | `WF1_AT_ALL` | `value` (managed) | `false` |
 | `WF1_BOOTSTRAP_SEND_EXISTING` | `value` (managed) | `false` |
@@ -76,6 +78,8 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 
 | Key | Management | Value |
 | --- | --- | --- |
+| `BOT_CONFIG_SHEET_ID` | `value` (managed) | `1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc` |
+| `BOT_CONFIG_TAB` | `value` (managed) | `bot_config` |
 | `SEATALK_SYSTEM_WEBHOOK_URL` | `sync: false` (unmanaged/secret) | - |
 | `WF21_BOOTSTRAP_PROCESS_EXISTING` | `value` (managed) | `true` |
 | `WF21_CONTINUOUS` | `value` (managed) | `true` |
@@ -137,4 +141,25 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
   - `SEATALK_APP_ID`
   - `SEATALK_APP_SECRET`
   - `SEATALK_BASE_URL`
+
+## go-bot-sync-bot-config-groups
+
+- Build command: `go build -o bin/bot-config-group-sync ./cmd/bot-config-group-sync`
+- Workflow source: `cmd/bot-config-group-sync`
+
+### Render Vars (`render.yaml`)
+
+| Key | Management | Value |
+| --- | --- | --- |
+| `BOT_CONFIG_SHEET_ID` | `value` (managed) | `1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc` |
+| `BOT_CONFIG_SYNC_BASE_URL` | `value` (managed) | `https://openapi.seatalk.io` |
+| `BOT_CONFIG_SYNC_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `10` |
+| `BOT_CONFIG_TAB` | `value` (managed) | `bot_config` |
+| `WF21_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
+| `WF21_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
+
+### Code Scan (Env Keys)
+
+- Detected keys (prefix-filtered for this service): `GOOGLE_APPLICATION_CREDENTIALS`, `WF21_GOOGLE_CREDENTIALS_FILE`, `WF21_GOOGLE_CREDENTIALS_JSON`
+- Missing from `render.yaml`: none
 

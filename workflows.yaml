@@ -19,6 +19,15 @@ workflows:
       WF21_CONTINUOUS: "true"
       WF21_POLL_INTERVAL_SECONDS: "30"
 
+  sync_bot_config_groups:
+    enabled: true
+    command: go
+    args:
+      - run
+      - ./cmd/bot-config-group-sync
+    timeout_seconds: 180
+    allow_extra_args: false
+
   ping:
     command: cmd
     args:

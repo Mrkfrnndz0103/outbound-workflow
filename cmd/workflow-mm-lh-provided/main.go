@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/spxph4227/go-bot-server/internal/botconfig"
 	"github.com/spxph4227/go-bot-server/internal/seatalk"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -365,6 +366,30 @@ func loadConfig() (workflowConfig, error) {
 		os.Getenv("WF1_SEATALK_WEBHOOK_URL"),
 		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
 	))
+	botConfigSheetID := strings.TrimSpace(os.Getenv("BOT_CONFIG_SHEET_ID"))
+	botConfigTab := strings.TrimSpace(os.Getenv("BOT_CONFIG_TAB"))
+	if botConfigSheetID != "" {
+		botCfgSvc, svcErr := newReadonlySheetsService(context.Background(), credsFile, credsJSON)
+		if svcErr != nil {
+			return workflowConfig{}, fmt.Errorf("create sheets service for bot_config: %w", svcErr)
+		}
+		rows, loadErr := botconfig.LoadRowsFromSheet(context.Background(), botCfgSvc, botConfigSheetID, botConfigTab)
+		if loadErr != nil {
+			return workflowConfig{}, loadErr
+		}
+		row, resolveErr := botconfig.ResolveForWorkflow(rows, "wf1")
+		if resolveErr != nil {
+			return workflowConfig{}, resolveErr
+		}
+		if validateErr := botconfig.ValidateResolvedRow(row); validateErr != nil {
+			return workflowConfig{}, validateErr
+		}
+		seaTalkMode = row.Mode
+		seaTalkGroupID = row.TargetGroup
+		seaTalkAppID = row.AppID
+		seaTalkAppSecret = row.AppSecret
+		seaTalkWebhookURL = row.WebhookURL
+	}
 	switch seaTalkMode {
 	case "webhook":
 		if seaTalkWebhookURL == "" {
@@ -1374,17 +1399,20 @@ func getIntEnv(key string, fallback int) int {
 	return parsed
 }
 
-func loadSheetRows(ctx context.Context, cfg workflowConfig) ([]sheetRow, error) {
+func newReadonlySheetsService(ctx context.Context, credsFile, credsJSON string) (*sheets.Service, error) {
 	options := []option.ClientOption{
 		option.WithScopes(sheets.SpreadsheetsReadonlyScope),
 	}
-	if strings.TrimSpace(cfg.GoogleCredentialsJSON) != "" {
-		options = append(options, option.WithCredentialsJSON([]byte(cfg.GoogleCredentialsJSON)))
+	if strings.TrimSpace(credsJSON) != "" {
+		options = append(options, option.WithCredentialsJSON([]byte(credsJSON)))
 	} else {
-		options = append(options, option.WithCredentialsFile(cfg.GoogleCredentialsFile))
+		options = append(options, option.WithCredentialsFile(credsFile))
 	}
+	return sheets.NewService(ctx, options...)
+}
 
-	service, err := sheets.NewService(ctx, options...)
+func loadSheetRows(ctx context.Context, cfg workflowConfig) ([]sheetRow, error) {
+	service, err := newReadonlySheetsService(ctx, cfg.GoogleCredentialsFile, cfg.GoogleCredentialsJSON)
 	if err != nil {
 		return nil, fmt.Errorf("create sheets service: %w", err)
 	}

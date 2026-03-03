@@ -120,6 +120,36 @@ curl -X POST http://localhost:8081/send/image `
 - System accounts are outbound-only by design.
 - System accounts are rate-limited (see SeaTalk doc; e.g., per-minute sending limit and silence period on abuse).
 
+## Shared Bot Config Sheet
+
+All workflow SeaTalk routing can be sourced from Google Sheet `bot_config` when `BOT_CONFIG_SHEET_ID` is set.
+
+Expected `bot_config` header layout:
+
+- `A`: `bot_mode` (`bot` or `webhook`)
+- `B`: `workflow` (`wf1`, `wf2`, `wf21`)
+- `C`: `target_group`
+- `D`: `group_id` (auto-managed inventory output)
+- `E`: `bot_name` (auto-managed inventory output)
+- `F`: `app_id`
+- `G`: `app_secret`
+- `H`: `signing_secret`
+- `I`: `webhook_url`
+
+Notes:
+
+- Runtime workflows read routing/auth from `A:C` + `F:I`.
+- Inventory sync rewrites `D:E` completely each run.
+- If `BOT_CONFIG_SHEET_ID` is empty, workflows keep env-based SeaTalk behavior.
+
+Sync command:
+
+```powershell
+go run ./cmd/bot-config-group-sync
+```
+
+This command discovers joined group IDs per bot app and updates `bot_config!D2:E`.
+
 ## Workflow 1: MM LH Provided Trigger
 
 `workflow_1_mm_lh_provided` reads Google Sheet:
@@ -170,6 +200,9 @@ Required env for this workflow:
 - Google credentials via one of:
   - `WF1_GOOGLE_CREDENTIALS_FILE` (or `GOOGLE_APPLICATION_CREDENTIALS`)
   - `WF1_GOOGLE_CREDENTIALS_JSON`
+- Optional shared routing source:
+  - `BOT_CONFIG_SHEET_ID` (when set, `wf1` row in `bot_config` overrides mode/group/app/webhook)
+  - `BOT_CONFIG_TAB` (default `bot_config`)
 
 Optional env:
 
@@ -225,7 +258,7 @@ Status output:
 Get-Content .\data\workflow1-mm-lh-provided-status.json
 ```
 
-## Workflow 2: OB Pending Dispatch Snapshot (Bot Group Chat)
+## Workflow 2: OB Pending Dispatch Snapshot (Bot/Webhook Group Chat)
 
 `workflow_2_ob_pending_dispatch` reads Google Sheet:
 
@@ -242,7 +275,7 @@ Trigger behavior:
 
 Send behavior:
 
-- Uses SeaTalk bot API endpoint `POST /messaging/v2/group_chat` (not system account webhook).
+- Supports SeaTalk `bot` mode (`POST /messaging/v2/group_chat`) and `webhook` mode.
 - Sends text first:
   - `<mention-tag target="seatalk://user?id=0"/> OB Pending for Dispatch as of {local_time}`
   - Local time format: `3:04 PM Jan-02` in `WF2_TIMEZONE` (default `Asia/Manila`)
@@ -252,13 +285,20 @@ Send behavior:
 
 Required env for this workflow:
 
-- `WF2_SEATALK_GROUP_ID`
-- SeaTalk app credentials via either:
-  - `WF2_SEATALK_APP_ID` + `WF2_SEATALK_APP_SECRET`
-  - or fallback to `SEATALK_APP_ID` + `SEATALK_APP_SECRET`
+- `WF2_SEATALK_MODE` (`bot` or `webhook`; default `bot`)
+- If `WF2_SEATALK_MODE=bot`:
+  - `WF2_SEATALK_GROUP_ID`
+  - SeaTalk app credentials via either:
+    - `WF2_SEATALK_APP_ID` + `WF2_SEATALK_APP_SECRET`
+    - or fallback to `SEATALK_APP_ID` + `SEATALK_APP_SECRET`
+- If `WF2_SEATALK_MODE=webhook`:
+  - `WF2_SEATALK_WEBHOOK_URL` (fallback `SEATALK_SYSTEM_WEBHOOK_URL`)
 - Google credentials via one of:
   - `WF2_GOOGLE_CREDENTIALS_FILE` (or `GOOGLE_APPLICATION_CREDENTIALS`)
   - `WF2_GOOGLE_CREDENTIALS_JSON`
+- Optional shared routing source:
+  - `BOT_CONFIG_SHEET_ID` (when set, `wf2` row in `bot_config` overrides mode/group/app/webhook)
+  - `BOT_CONFIG_TAB` (default `bot_config`)
 
 Optional env:
 
@@ -274,6 +314,7 @@ Optional env:
 - `WF2_RENDER_SCALE` (default `2`, range `1-4`)
 - `WF2_STABILITY_RUNS` (default `3`, min `2`)
 - `WF2_STABILITY_WAIT_SECONDS` (default `2`, min `1`)
+- `WF2_SEATALK_WEBHOOK_URL` (used when `WF2_SEATALK_MODE=webhook`)
 - `WF2_ENABLE_HEALTH_SERVER` (default `true`)
 - `WF2_HEALTH_PORT` (default uses `PORT`, fallback `8080`)
 
@@ -330,6 +371,9 @@ Required env:
 - `WF21_SUMMARY_SEATALK_MODE` (`bot` or `webhook`) when `WF21_SUMMARY_SEND_ENABLED=true` (default)
 - `WF21_SEATALK_GROUP_ID` + `WF21_SEATALK_APP_ID` / `WF21_SEATALK_APP_SECRET` when mode is `bot` (supports `WF2_*` and global `SEATALK_*` fallbacks)
 - `WF21_SEATALK_WEBHOOK_URL` (or `SEATALK_SYSTEM_WEBHOOK_URL`) when mode is `webhook`
+- Optional shared routing source:
+  - `BOT_CONFIG_SHEET_ID` (when set, `wf21` row in `bot_config` overrides summary mode/group/app/webhook)
+  - `BOT_CONFIG_TAB` (default `bot_config`)
 
 Optional env:
 
@@ -398,6 +442,7 @@ Use the included `render.yaml` blueprint to deploy as a web service.
 
 Note:
 - `go-bot-workflow-drive-csv-consolidation` is configured with `runtime: docker` and uses `cmd/workflow-drive-csv-consolidation/Dockerfile.render`, which installs `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`.
+- `go-bot-sync-bot-config-groups` is configured as a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.
 2. In Render, create a new Blueprint and select the repo.

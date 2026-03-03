@@ -29,6 +29,11 @@ type Messenger interface {
 	SendTextToEmployee(ctx context.Context, employeeCode string, content string) error
 }
 
+type JoinedGroup struct {
+	GroupID   string
+	GroupName string
+}
+
 type Client struct {
 	appID     string
 	appSecret string
@@ -124,6 +129,124 @@ func (c *Client) SendImageToGroupBase64(ctx context.Context, groupID string, bas
 	return c.requestWithAuthRetry(ctx, http.MethodPost, "/messaging/v2/group_chat", requestBody)
 }
 
+func (c *Client) ListJoinedGroupChats(ctx context.Context) ([]JoinedGroup, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.listJoinedGroupChatsWithToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	if result.Code == openAPICodeOK {
+		return result.Groups, nil
+	}
+	if result.Code == openAPICodeAccessTokenExpired {
+		if err = c.refreshAccessToken(ctx); err != nil {
+			return nil, err
+		}
+		token, err = c.getAccessToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+		result, err = c.listJoinedGroupChatsWithToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		if result.Code == openAPICodeOK {
+			return result.Groups, nil
+		}
+	}
+	return nil, fmt.Errorf("seatalk api error code=%d message=%s", result.Code, result.Message)
+}
+
+type joinedGroupsAPIResult struct {
+	Code    int
+	Message string
+	Groups  []JoinedGroup
+}
+
+func (c *Client) listJoinedGroupChatsWithToken(ctx context.Context, token string) (joinedGroupsAPIResult, error) {
+	raw, err := c.requestRaw(ctx, http.MethodGet, "/messaging/v2/group_chat/joined", nil, token)
+	if err != nil {
+		return joinedGroupsAPIResult{}, err
+	}
+
+	var envelope struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err = json.Unmarshal(raw, &envelope); err != nil {
+		return joinedGroupsAPIResult{}, fmt.Errorf("decode seatalk response: %w", err)
+	}
+
+	groups := extractJoinedGroups(raw, envelope.Data)
+	return joinedGroupsAPIResult{
+		Code:    envelope.Code,
+		Message: envelope.Message,
+		Groups:  groups,
+	}, nil
+}
+
+func extractJoinedGroups(rawTopLevel []byte, rawData json.RawMessage) []JoinedGroup {
+	items := make([]JoinedGroup, 0, 16)
+
+	tryParse := func(raw json.RawMessage) bool {
+		var rows []struct {
+			GroupID   string `json:"group_id"`
+			GroupName string `json:"group_name"`
+		}
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			return false
+		}
+		for _, row := range rows {
+			groupID := strings.TrimSpace(row.GroupID)
+			if groupID == "" {
+				continue
+			}
+			items = append(items, JoinedGroup{
+				GroupID:   groupID,
+				GroupName: strings.TrimSpace(row.GroupName),
+			})
+		}
+		return true
+	}
+
+	readCandidateArrays := func(raw json.RawMessage) {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return
+		}
+		candidates := []string{"group_chats", "groups", "group_chat_list", "list", "items"}
+		for _, key := range candidates {
+			if payload, ok := obj[key]; ok {
+				_ = tryParse(payload)
+			}
+		}
+	}
+
+	readCandidateArrays(rawTopLevel)
+	if len(rawData) > 0 {
+		if !tryParse(rawData) {
+			readCandidateArrays(rawData)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(items))
+	out := make([]JoinedGroup, 0, len(items))
+	for _, item := range items {
+		key := item.GroupID + "\n" + item.GroupName
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
 func (c *Client) requestWithAuthRetry(ctx context.Context, method string, path string, body any) error {
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
@@ -210,7 +333,7 @@ type authResponse struct {
 
 func (c *Client) request(ctx context.Context, method string, path string, body any, token string) (apiResponse, error) {
 	var parsed apiResponse
-	reqBody, err := json.Marshal(body)
+	reqBody, err := c.marshalRequestBody(body)
 	if err != nil {
 		return parsed, err
 	}
@@ -219,7 +342,9 @@ func (c *Client) request(ctx context.Context, method string, path string, body a
 	if err != nil {
 		return parsed, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	res, err := c.http.Do(req)
@@ -239,6 +364,44 @@ func (c *Client) request(ctx context.Context, method string, path string, body a
 		return parsed, fmt.Errorf("decode seatalk response: %w", err)
 	}
 	return parsed, nil
+}
+
+func (c *Client) requestRaw(ctx context.Context, method string, path string, body any, token string) ([]byte, error) {
+	reqBody, err := c.marshalRequestBody(body)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("seatalk api status=%d body=%s", res.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
+func (c *Client) marshalRequestBody(body any) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+	return json.Marshal(body)
 }
 
 func (c *Client) requestWithoutAuth(ctx context.Context, method string, path string, body any, out any) error {

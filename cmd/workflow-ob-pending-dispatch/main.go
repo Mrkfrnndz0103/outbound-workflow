@@ -40,6 +40,7 @@ import (
 	"github.com/go-fonts/liberation/liberationserifitalic"
 	"github.com/go-fonts/liberation/liberationserifregular"
 	"github.com/joho/godotenv"
+	"github.com/spxph4227/go-bot-server/internal/botconfig"
 	"github.com/spxph4227/go-bot-server/internal/seatalk"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -68,6 +69,7 @@ const (
 	defaultRenderScale   = 2
 	defaultStabilityWait = 2 * time.Second
 	defaultStabilityRuns = 3
+	defaultSeaTalkMode   = "bot"
 )
 
 type workflowConfig struct {
@@ -78,10 +80,12 @@ type workflowConfig struct {
 	GoogleCredentialsFile string
 	GoogleCredentialsJSON string
 
-	SeaTalkAppID     string
-	SeaTalkAppSecret string
-	SeaTalkBaseURL   string
-	SeaTalkGroupID   string
+	SeaTalkAppID      string
+	SeaTalkAppSecret  string
+	SeaTalkBaseURL    string
+	SeaTalkGroupID    string
+	SeaTalkMode       string
+	SeaTalkWebhookURL string
 
 	Continuous            bool
 	BootstrapSendExisting bool
@@ -219,15 +223,24 @@ func main() {
 		logger.Fatalf("google sheets init error: %v", err)
 	}
 
-	seaTalkClient := seatalk.NewClient(seatalk.ClientConfig{
-		AppID:     cfg.SeaTalkAppID,
-		AppSecret: cfg.SeaTalkAppSecret,
-		BaseURL:   cfg.SeaTalkBaseURL,
-		Timeout:   cfg.HTTPTimeout,
-	})
+	var seaTalkClient *seatalk.Client
+	var webhookClient *seatalk.SystemAccountClient
+	switch cfg.SeaTalkMode {
+	case "bot":
+		seaTalkClient = seatalk.NewClient(seatalk.ClientConfig{
+			AppID:     cfg.SeaTalkAppID,
+			AppSecret: cfg.SeaTalkAppSecret,
+			BaseURL:   cfg.SeaTalkBaseURL,
+			Timeout:   cfg.HTTPTimeout,
+		})
+	case "webhook":
+		webhookClient = seatalk.NewSystemAccountClient(cfg.SeaTalkWebhookURL, cfg.HTTPTimeout)
+	default:
+		logger.Fatalf("unsupported seaTalk mode: %s", cfg.SeaTalkMode)
+	}
 
 	if !cfg.Continuous {
-		if err = runCycle(context.Background(), cfg, sheetsSvc, seaTalkClient, loc, &state, &stateExists, logger, 1); err != nil {
+		if err = runCycle(context.Background(), cfg, sheetsSvc, seaTalkClient, webhookClient, loc, &state, &stateExists, logger, 1); err != nil {
 			logger.Fatalf("workflow failed: %v", err)
 		}
 		return
@@ -243,7 +256,7 @@ func main() {
 	logger.Printf("watch mode enabled poll_interval=%s trigger=%s!%s", cfg.PollInterval, cfg.SheetTab, cfg.TriggerCell)
 	cycle := 1
 	for {
-		if err = runCycle(sigCtx, cfg, sheetsSvc, seaTalkClient, loc, &state, &stateExists, logger, cycle); err != nil {
+		if err = runCycle(sigCtx, cfg, sheetsSvc, seaTalkClient, webhookClient, loc, &state, &stateExists, logger, cycle); err != nil {
 			if sigCtx.Err() != nil {
 				logger.Printf("watch mode stopped")
 				return
@@ -266,6 +279,7 @@ func runCycle(
 	cfg workflowConfig,
 	svc *sheets.Service,
 	seaTalkClient *seatalk.Client,
+	webhookClient *seatalk.SystemAccountClient,
 	loc *time.Location,
 	state *workflowState,
 	stateExists *bool,
@@ -346,11 +360,27 @@ func runCycle(
 		if cfg.DryRun {
 			logger.Printf("dry_run=true changed=true trigger_cell=%s old=%q new=%q range=%s!%s render_scale=%d image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, cfg.SheetTab, cfg.CaptureRange, cfg.RenderScale, imageFmt, imageBytes)
 		} else {
-			if sendErr := seaTalkClient.SendTextToGroup(ctx, cfg.SeaTalkGroupID, announce, 1); sendErr != nil {
-				return fmt.Errorf("send text: %w", sendErr)
-			}
-			if sendErr := seaTalkClient.SendImageToGroupBase64(ctx, cfg.SeaTalkGroupID, base64Image); sendErr != nil {
-				return fmt.Errorf("send image (%s!%s): %w", cfg.SheetTab, cfg.CaptureRange, sendErr)
+			switch cfg.SeaTalkMode {
+			case "webhook":
+				if webhookClient == nil {
+					return errors.New("system webhook client is not configured")
+				}
+				if sendErr := webhookClient.SendTextWithAtAll(ctx, announce, 1, true); sendErr != nil {
+					return fmt.Errorf("send text via webhook: %w", sendErr)
+				}
+				if sendErr := webhookClient.SendImageBase64(ctx, base64Image); sendErr != nil {
+					return fmt.Errorf("send image via webhook (%s!%s): %w", cfg.SheetTab, cfg.CaptureRange, sendErr)
+				}
+			default:
+				if seaTalkClient == nil {
+					return errors.New("seatalk bot client is not configured")
+				}
+				if sendErr := seaTalkClient.SendTextToGroup(ctx, cfg.SeaTalkGroupID, announce, 1); sendErr != nil {
+					return fmt.Errorf("send text via bot: %w", sendErr)
+				}
+				if sendErr := seaTalkClient.SendImageToGroupBase64(ctx, cfg.SeaTalkGroupID, base64Image); sendErr != nil {
+					return fmt.Errorf("send image via bot (%s!%s): %w", cfg.SheetTab, cfg.CaptureRange, sendErr)
+				}
 			}
 			state.LastSentAt = now.Format(time.RFC3339)
 			logger.Printf("sent changed=true trigger_cell=%s old=%q new=%q image_format=%s image_bytes=%d", cfg.TriggerCell, state.LastTriggerValue, triggerValue, imageFmt, imageBytes)
@@ -423,15 +453,55 @@ func loadConfig() (workflowConfig, error) {
 		return workflowConfig{}, errors.New("set WF2_GOOGLE_CREDENTIALS_FILE/GOOGLE_APPLICATION_CREDENTIALS or WF2_GOOGLE_CREDENTIALS_JSON")
 	}
 
+	seaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF2_SEATALK_MODE"),
+		defaultSeaTalkMode,
+	)))
 	appID := strings.TrimSpace(firstNonEmpty(os.Getenv("WF2_SEATALK_APP_ID"), os.Getenv("SEATALK_APP_ID")))
 	appSecret := strings.TrimSpace(firstNonEmpty(os.Getenv("WF2_SEATALK_APP_SECRET"), os.Getenv("SEATALK_APP_SECRET")))
-	if appID == "" || appSecret == "" {
-		return workflowConfig{}, errors.New("set WF2_SEATALK_APP_ID/WF2_SEATALK_APP_SECRET or SEATALK_APP_ID/SEATALK_APP_SECRET")
-	}
-
 	groupID := strings.TrimSpace(os.Getenv("WF2_SEATALK_GROUP_ID"))
-	if groupID == "" {
-		return workflowConfig{}, errors.New("WF2_SEATALK_GROUP_ID is required")
+	webhookURL := strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF2_SEATALK_WEBHOOK_URL"),
+		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
+	))
+	botConfigSheetID := strings.TrimSpace(os.Getenv("BOT_CONFIG_SHEET_ID"))
+	botConfigTab := strings.TrimSpace(os.Getenv("BOT_CONFIG_TAB"))
+	if botConfigSheetID != "" {
+		botCfgSvc, svcErr := newReadonlySheetsService(context.Background(), credsFile, credsJSON)
+		if svcErr != nil {
+			return workflowConfig{}, fmt.Errorf("create sheets service for bot_config: %w", svcErr)
+		}
+		rows, loadErr := botconfig.LoadRowsFromSheet(context.Background(), botCfgSvc, botConfigSheetID, botConfigTab)
+		if loadErr != nil {
+			return workflowConfig{}, loadErr
+		}
+		row, resolveErr := botconfig.ResolveForWorkflow(rows, "wf2")
+		if resolveErr != nil {
+			return workflowConfig{}, resolveErr
+		}
+		if validateErr := botconfig.ValidateResolvedRow(row); validateErr != nil {
+			return workflowConfig{}, validateErr
+		}
+		seaTalkMode = row.Mode
+		groupID = row.TargetGroup
+		appID = row.AppID
+		appSecret = row.AppSecret
+		webhookURL = row.WebhookURL
+	}
+	switch seaTalkMode {
+	case "bot":
+		if appID == "" || appSecret == "" {
+			return workflowConfig{}, errors.New("set WF2_SEATALK_APP_ID/WF2_SEATALK_APP_SECRET or SEATALK_APP_ID/SEATALK_APP_SECRET")
+		}
+		if groupID == "" {
+			return workflowConfig{}, errors.New("WF2_SEATALK_GROUP_ID is required")
+		}
+	case "webhook":
+		if webhookURL == "" {
+			return workflowConfig{}, errors.New("WF2_SEATALK_WEBHOOK_URL or SEATALK_SYSTEM_WEBHOOK_URL is required when WF2_SEATALK_MODE=webhook")
+		}
+	default:
+		return workflowConfig{}, fmt.Errorf("WF2_SEATALK_MODE must be one of: bot, webhook (got %q)", seaTalkMode)
 	}
 
 	statusFile := strings.TrimSpace(os.Getenv("WF2_STATUS_FILE"))
@@ -459,6 +529,8 @@ func loadConfig() (workflowConfig, error) {
 		SeaTalkAppSecret:      appSecret,
 		SeaTalkBaseURL:        firstNonEmpty(strings.TrimSpace(os.Getenv("SEATALK_BASE_URL")), "https://openapi.seatalk.io"),
 		SeaTalkGroupID:        groupID,
+		SeaTalkMode:           seaTalkMode,
+		SeaTalkWebhookURL:     webhookURL,
 		Continuous:            continuous,
 		BootstrapSendExisting: bootstrapSendExisting,
 		DryRun:                dryRun,
@@ -497,16 +569,20 @@ func loadConfig() (workflowConfig, error) {
 	return cfg, nil
 }
 
-func newSheetsService(ctx context.Context, cfg workflowConfig) (*sheets.Service, error) {
+func newReadonlySheetsService(ctx context.Context, credsFile, credsJSON string) (*sheets.Service, error) {
 	options := []option.ClientOption{
 		option.WithScopes(sheets.SpreadsheetsReadonlyScope),
 	}
-	if cfg.GoogleCredentialsJSON != "" {
-		options = append(options, option.WithCredentialsJSON([]byte(cfg.GoogleCredentialsJSON)))
+	if strings.TrimSpace(credsJSON) != "" {
+		options = append(options, option.WithCredentialsJSON([]byte(credsJSON)))
 	} else {
-		options = append(options, option.WithCredentialsFile(cfg.GoogleCredentialsFile))
+		options = append(options, option.WithCredentialsFile(credsFile))
 	}
-	svc, err := sheets.NewService(ctx, options...)
+	return sheets.NewService(ctx, options...)
+}
+
+func newSheetsService(ctx context.Context, cfg workflowConfig) (*sheets.Service, error) {
+	svc, err := newReadonlySheetsService(ctx, cfg.GoogleCredentialsFile, cfg.GoogleCredentialsJSON)
 	if err != nil {
 		return nil, err
 	}
