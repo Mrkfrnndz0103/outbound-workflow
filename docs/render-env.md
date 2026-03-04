@@ -14,6 +14,40 @@ Auto-update on local `.env` / `.env.example` / `render.yaml` changes:
 powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 ```
 
+## go-bot-seatalk-bot
+
+- Build command: `go build -o bin/seatalk-bot ./cmd/seatalk-bot`
+- Workflow source: `cmd/seatalk-bot`
+
+### Render Vars (`render.yaml`)
+
+| Key | Management | Value |
+| --- | --- | --- |
+| `BOT_COMMAND_PREFIX` | `value` (managed) | `/` |
+| `BOT_CONFIG_SHEET_ID` | `value` (managed) | `1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc` |
+| `BOT_CONFIG_SYNC_BASE_URL` | `value` (managed) | `https://openapi.seatalk.io` |
+| `BOT_CONFIG_SYNC_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `10` |
+| `BOT_CONFIG_TAB` | `value` (managed) | `bot_config` |
+| `SEATALK_APP_ID` | `sync: false` (unmanaged/secret) | - |
+| `SEATALK_APP_SECRET` | `sync: false` (unmanaged/secret) | - |
+| `SEATALK_BASE_URL` | `value` (managed) | `https://openapi.seatalk.io` |
+| `SEATALK_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `10` |
+| `SEATALK_MODE` | `value` (managed) | `bot` |
+| `SEATALK_SIGNING_SECRET` | `sync: false` (unmanaged/secret) | - |
+| `WF1_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
+| `WF1_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
+| `WF21_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
+| `WF21_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
+| `WF2_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
+| `WF2_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
+| `WORKFLOWS_FILE` | `value` (managed) | `workflows.yaml` |
+| `WORKFLOW_DEFAULT_TIMEOUT_SECONDS` | `value` (managed) | `120` |
+
+### Code Scan (Env Keys)
+
+- Detected keys (prefix-filtered for this service): ``
+- Missing from `render.yaml`: none
+
 ## go-bot-workflow-mm-lh-provided
 
 - Build command: `go build -o bin/workflow-mm-lh-provided ./cmd/workflow-mm-lh-provided`

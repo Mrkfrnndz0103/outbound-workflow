@@ -1,5 +1,53 @@
 services:
   - type: web
+    name: go-bot-seatalk-bot
+    runtime: go
+    plan: free
+    autoDeploy: false
+    healthCheckPath: /healthz
+    buildCommand: go build -o bin/seatalk-bot ./cmd/seatalk-bot
+    startCommand: ./bin/seatalk-bot
+    envVars:
+      - key: SEATALK_MODE
+        value: bot
+      - key: SEATALK_BASE_URL
+        value: https://openapi.seatalk.io
+      - key: SEATALK_HTTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: BOT_COMMAND_PREFIX
+        value: /
+      - key: WORKFLOWS_FILE
+        value: workflows.yaml
+      - key: WORKFLOW_DEFAULT_TIMEOUT_SECONDS
+        value: "120"
+      - key: BOT_CONFIG_SHEET_ID
+        value: 1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc
+      - key: BOT_CONFIG_TAB
+        value: bot_config
+      - key: BOT_CONFIG_SYNC_BASE_URL
+        value: https://openapi.seatalk.io
+      - key: BOT_CONFIG_SYNC_HTTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: WF21_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: WF1_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: WF2_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: SEATALK_SIGNING_SECRET
+        sync: false
+      - key: SEATALK_APP_ID
+        sync: false
+      - key: SEATALK_APP_SECRET
+        sync: false
+      - key: WF21_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF1_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF2_GOOGLE_CREDENTIALS_JSON
+        sync: false
+
+  - type: web
     name: go-bot-workflow-mm-lh-provided
     runtime: go
     plan: free
