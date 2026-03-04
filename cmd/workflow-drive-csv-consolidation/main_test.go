@@ -98,6 +98,21 @@ func TestIsRetryableSheetsWriteError(t *testing.T) {
 	}
 }
 
+func TestIsRetryablePDFExportStatus(t *testing.T) {
+	if !isRetryablePDFExportStatus(429) {
+		t.Fatalf("expected 429 to be retryable")
+	}
+	if !isRetryablePDFExportStatus(500) {
+		t.Fatalf("expected 500 to be retryable")
+	}
+	if !isRetryablePDFExportStatus(503) {
+		t.Fatalf("expected 503 to be retryable")
+	}
+	if isRetryablePDFExportStatus(404) {
+		t.Fatalf("expected 404 not to be retryable")
+	}
+}
+
 func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	row := []string{"TO-1", "SPX-1", "Receiver"}
 	picked := pickColumns(row, []int{0, 1, 2, 0})
@@ -193,24 +208,6 @@ func TestBuildSummaryCaptionForBot(t *testing.T) {
 	want := "<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of 9:07 PM Feb-28. Thanks!"
 	if got != want {
 		t.Fatalf("unexpected caption: got=%q want=%q", got, want)
-	}
-}
-
-func TestBuildSummaryErrorFallbackText(t *testing.T) {
-	ts := time.Date(2026, 3, 5, 4, 55, 0, 0, time.FixedZone("UTC+8", 8*3600))
-	got := buildSummaryErrorFallbackText(ts, "Backlogs per hub level:", "https://bit.ly/47jGTJB")
-	want := "@All\nOutbound Pending for Dispatch as of 4:55 AM Mar-05.\n\n**Backlogs per hub level:**\nhttps://bit.ly/47jGTJB"
-	if got != want {
-		t.Fatalf("unexpected fallback text: got=%q want=%q", got, want)
-	}
-}
-
-func TestBuildSummaryErrorFallbackTextForBot(t *testing.T) {
-	ts := time.Date(2026, 3, 5, 4, 55, 0, 0, time.FixedZone("UTC+8", 8*3600))
-	got := buildSummaryErrorFallbackTextForBot(ts, "Backlogs per hub level:", "https://bit.ly/47jGTJB")
-	want := "<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of 4:55 AM Mar-05.\n\n**Backlogs per hub level:**\nhttps://bit.ly/47jGTJB"
-	if got != want {
-		t.Fatalf("unexpected fallback text: got=%q want=%q", got, want)
 	}
 }
 

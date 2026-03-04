@@ -59,7 +59,6 @@ const (
 	defaultSummarySecondTab       = "config"
 	defaultSummarySecondRanges    = "E154:Y184"
 	defaultSummaryExtraImages     = ""
-	defaultSummaryErrorLinkLabel  = "Backlogs per hub level:"
 	defaultSummaryWaitAfterImport = 5 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
@@ -137,8 +136,6 @@ type workflowConfig struct {
 	SummarySecondTab       string
 	SummarySecondRanges    []string
 	SummaryExtraImages     []summaryImageRef
-	SummaryErrorLinkURL    string
-	SummaryErrorLinkLabel  string
 	SummaryWaitAfterImport time.Duration
 	SummaryStabilityWait   time.Duration
 	SummaryStabilityRuns   int
@@ -289,7 +286,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images=%q error_link_url=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -298,7 +295,6 @@ func main() {
 			cfg.SummarySecondTab,
 			strings.Join(cfg.SummarySecondRanges, ","),
 			formatSummaryImageRefs(cfg.SummaryExtraImages),
-			cfg.SummaryErrorLinkURL,
 			cfg.SummarySyncCell,
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
@@ -749,20 +745,12 @@ func processZipAndImport(
 			if sendSummaryAfterImport && cfg.SummarySendEnabled {
 				summaryResult, summaryErr := sendSummarySnapshotToSeaTalk(ctx, cfg, sheetsSvc)
 				if summaryErr != nil {
-					fallbackErr := sendSummaryErrorFallbackLink(ctx, cfg)
-					if fallbackErr != nil {
-						return result, fmt.Errorf("send summary snapshot failed: %w; fallback link send failed: %v", summaryErr, fallbackErr)
-					}
-					result.SummaryImageSent = true
-					result.SummaryStable = summaryResult.Stable
-					result.SummaryImageFmt = "fallback_link"
-					result.SummaryImageBytes = 0
-				} else {
-					result.SummaryImageSent = true
-					result.SummaryStable = summaryResult.Stable
-					result.SummaryImageFmt = summaryResult.Format
-					result.SummaryImageBytes = summaryResult.RawBytes
+					return result, summaryErr
 				}
+				result.SummaryImageSent = true
+				result.SummaryStable = summaryResult.Stable
+				result.SummaryImageFmt = summaryResult.Format
+				result.SummaryImageBytes = summaryResult.RawBytes
 			}
 			if err = importRowsToDestinationTab(ctx, sheetsSvc, cfg, cfg.DestinationSheetID, &importTabStates[2], noLHPackingRows); err != nil {
 				return result, err
@@ -994,15 +982,10 @@ func loadConfig() (workflowConfig, error) {
 			strings.TrimSpace(os.Getenv("WF21_SUMMARY_RANGE")),
 			defaultSummaryRange,
 		),
-		SummarySecondEnabled: summarySecondEnabled,
-		SummarySecondTab:     summarySecondTab,
-		SummarySecondRanges:  summarySecondRanges,
-		SummaryExtraImages:   summaryExtraImages,
-		SummaryErrorLinkURL:  strings.TrimSpace(os.Getenv("WF21_SUMMARY_ERROR_LINK_URL")),
-		SummaryErrorLinkLabel: strings.TrimSpace(firstNonEmpty(
-			os.Getenv("WF21_SUMMARY_ERROR_LINK_LABEL"),
-			defaultSummaryErrorLinkLabel,
-		)),
+		SummarySecondEnabled:   summarySecondEnabled,
+		SummarySecondTab:       summarySecondTab,
+		SummarySecondRanges:    summarySecondRanges,
+		SummaryExtraImages:     summaryExtraImages,
 		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
 		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),

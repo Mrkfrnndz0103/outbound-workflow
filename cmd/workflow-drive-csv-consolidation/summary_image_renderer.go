@@ -119,14 +119,17 @@ var (
 )
 
 const (
-	minRenderedFontSize     = 4.0
-	maxRenderedFontSize     = 144.0
-	summarySendMinInterval  = 1 * time.Second
-	summarySendRetryMax     = 5
-	summarySendRetryBase    = 1 * time.Second
-	summarySendRetryMaxDur  = 8 * time.Second
-	summarySyncPollInterval = 1 * time.Second
-	summarySyncMaxWait      = 30 * time.Second
+	minRenderedFontSize         = 4.0
+	maxRenderedFontSize         = 144.0
+	summarySendMinInterval      = 1 * time.Second
+	summarySendRetryMax         = 5
+	summarySendRetryBase        = 1 * time.Second
+	summarySendRetryMaxDur      = 8 * time.Second
+	summaryPDFExportRetryMax    = 5
+	summaryPDFExportRetryBase   = 1 * time.Second
+	summaryPDFExportRetryMaxDur = 8 * time.Second
+	summarySyncPollInterval     = 1 * time.Second
+	summarySyncMaxWait          = 30 * time.Second
 )
 
 type summaryImageSendResult struct {
@@ -233,8 +236,12 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		}
 		images = append(images, secondaryImage)
 	}
+
+	// Extra images (e.g., image 3+) are best-effort.
+	// If one fails to render, skip remaining extras but keep required text + image 1/2 flow.
+	extraImages := make([]encodedSummaryImage, 0, len(cfg.SummaryExtraImages))
 	for _, ref := range cfg.SummaryExtraImages {
-		label := fmt.Sprintf("image_%d", len(images)+1)
+		label := fmt.Sprintf("image_%d", len(images)+len(extraImages)+1)
 		extraImage, extraErr := buildEncodedSummaryImage(
 			ctx,
 			cfg,
@@ -250,9 +257,9 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			label,
 		)
 		if extraErr != nil {
-			return result, extraErr
+			break
 		}
-		images = append(images, extraImage)
+		extraImages = append(extraImages, extraImage)
 	}
 
 	captionTS := currentSummaryCaptionTime(cfg, time.Now())
@@ -272,6 +279,16 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 				return sender.SendImageBase64(ctx, img.Base64Data)
 			}); err != nil {
 				return result, fmt.Errorf("send %s summary image to seatalk webhook: %w", img.Label, err)
+			}
+		}
+		for _, img := range extraImages {
+			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+				return result, err
+			}
+			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk webhook", img.Label), func() error {
+				return sender.SendImageBase64(ctx, img.Base64Data)
+			}); err != nil {
+				break
 			}
 		}
 		return result, nil
@@ -296,6 +313,16 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			return sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data)
 		}); err != nil {
 			return result, fmt.Errorf("send %s summary image to seatalk bot: %w", img.Label, err)
+		}
+	}
+	for _, img := range extraImages {
+		if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			return result, err
+		}
+		if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot", img.Label), func() error {
+			return sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data)
+		}); err != nil {
+			break
 		}
 	}
 	return result, nil
@@ -610,6 +637,10 @@ func isPDFExportAccessDenied(err error) bool {
 		strings.Contains(low, "forbidden")
 }
 
+func isRetryablePDFExportStatus(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode >= 500
+}
+
 func renderRangeViaPDFPNG(
 	ctx context.Context,
 	cfg workflowConfig,
@@ -627,29 +658,44 @@ func renderRangeViaPDFPNG(
 		return nil, err
 	}
 	exportURL := buildSheetsPDFExportURL(sheetID, sheetGID, captureRange)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, exportURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build sheets export request: %w", err)
-	}
-	resp, err := exportHTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request sheets export pdf: %w", err)
-	}
-	defer resp.Body.Close()
+	delay := summaryPDFExportRetryBase
+	for attempt := 1; attempt <= summaryPDFExportRetryMax; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, exportURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build sheets export request: %w", err)
+		}
+		resp, err := exportHTTPClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("request sheets export pdf: %w", err)
+		}
 
-	pdfRaw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read sheets export pdf body: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("sheets export pdf status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(pdfRaw)))
-	}
+		pdfRaw, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read sheets export pdf body: %w", readErr)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			statusErr := fmt.Errorf("sheets export pdf status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(pdfRaw)))
+			if attempt == summaryPDFExportRetryMax || !isRetryablePDFExportStatus(resp.StatusCode) {
+				return nil, statusErr
+			}
+			if err := waitWithContext(ctx, delay); err != nil {
+				return nil, err
+			}
+			delay *= 2
+			if delay > summaryPDFExportRetryMaxDur {
+				delay = summaryPDFExportRetryMaxDur
+			}
+			continue
+		}
 
-	pngRaw, err := convertPDFToPNG(ctx, pdfRaw, cfg.SummaryPDFDPI, cfg.SummaryPDFConverter, cfg.TempDir)
-	if err != nil {
-		return nil, err
+		pngRaw, err := convertPDFToPNG(ctx, pdfRaw, cfg.SummaryPDFDPI, cfg.SummaryPDFConverter, cfg.TempDir)
+		if err != nil {
+			return nil, err
+		}
+		return pngRaw, nil
 	}
-	return pngRaw, nil
+	return nil, errors.New("sheets export pdf retry exhausted")
 }
 
 func lookupSheetGID(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) (int64, error) {
@@ -1093,53 +1139,6 @@ func buildSummaryCaptionForBot(ts time.Time) string {
 		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of %s. Thanks!",
 		ts.Format("3:04 PM Jan-02"),
 	)
-}
-
-func buildSummaryErrorFallbackText(ts time.Time, label, link string) string {
-	return fmt.Sprintf(
-		"@All\nOutbound Pending for Dispatch as of %s.\n\n**%s**\n%s",
-		ts.Format("3:04 PM Jan-02"),
-		strings.TrimSpace(label),
-		strings.TrimSpace(link),
-	)
-}
-
-func buildSummaryErrorFallbackTextForBot(ts time.Time, label, link string) string {
-	return fmt.Sprintf(
-		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of %s.\n\n**%s**\n%s",
-		ts.Format("3:04 PM Jan-02"),
-		strings.TrimSpace(label),
-		strings.TrimSpace(link),
-	)
-}
-
-func sendSummaryErrorFallbackLink(ctx context.Context, cfg workflowConfig) error {
-	link := strings.TrimSpace(cfg.SummaryErrorLinkURL)
-	if link == "" {
-		return errors.New("WF21_SUMMARY_ERROR_LINK_URL is empty")
-	}
-	label := strings.TrimSpace(cfg.SummaryErrorLinkLabel)
-	if label == "" {
-		label = "Backlogs per hub level:"
-	}
-	captionTS := currentSummaryCaptionTime(cfg, time.Now())
-
-	if cfg.SummarySeaTalkMode == "webhook" {
-		sender := seatalk.NewSystemAccountClient(cfg.SummaryWebhookURL, cfg.SummarySendHTTPTimeout)
-		return sendSummaryWithRetry(ctx, "send summary fallback link to seatalk webhook", func() error {
-			return sender.SendTextWithAtAll(ctx, buildSummaryErrorFallbackText(captionTS, label, link), 1, true)
-		})
-	}
-
-	sender := seatalk.NewClient(seatalk.ClientConfig{
-		AppID:     cfg.SummarySeaTalkAppID,
-		AppSecret: cfg.SummarySeaTalkSecret,
-		BaseURL:   cfg.SummarySeaTalkBaseURL,
-		Timeout:   cfg.SummarySendHTTPTimeout,
-	})
-	return sendSummaryWithRetry(ctx, "send summary fallback link to seatalk bot", func() error {
-		return sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryErrorFallbackTextForBot(captionTS, label, link), 1)
-	})
 }
 
 func waitForStableRangeDigest(
