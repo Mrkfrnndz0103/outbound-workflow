@@ -58,6 +58,7 @@ const (
 	defaultSummaryRange           = "B2:Q59"
 	defaultSummarySecondTab       = "config"
 	defaultSummarySecondRanges    = "E154:Y184"
+	defaultSummaryExtraImages     = ""
 	defaultSummaryWaitAfterImport = 5 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
@@ -134,6 +135,7 @@ type workflowConfig struct {
 	SummarySecondEnabled   bool
 	SummarySecondTab       string
 	SummarySecondRanges    []string
+	SummaryExtraImages     []summaryImageRef
 	SummaryWaitAfterImport time.Duration
 	SummaryStabilityWait   time.Duration
 	SummaryStabilityRuns   int
@@ -148,6 +150,11 @@ type workflowConfig struct {
 	SummaryTimezone        string
 	SummaryLocation        *time.Location
 	SummarySyncCell        string
+}
+
+type summaryImageRef struct {
+	Tab   string
+	Range string
 }
 
 type workflowState struct {
@@ -279,7 +286,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -287,6 +294,7 @@ func main() {
 			cfg.SummarySecondEnabled,
 			cfg.SummarySecondTab,
 			strings.Join(cfg.SummarySecondRanges, ","),
+			formatSummaryImageRefs(cfg.SummaryExtraImages),
 			cfg.SummarySyncCell,
 			cfg.SummaryWaitAfterImport,
 			cfg.SummaryStabilityRuns,
@@ -907,6 +915,13 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, fmt.Errorf("invalid WF21_SUMMARY_SECOND_RANGES: %w", err)
 	}
+	summaryExtraImages, err := parseSummaryImageRefs(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SUMMARY_EXTRA_IMAGES"),
+		defaultSummaryExtraImages,
+	)), summarySecondTab)
+	if err != nil {
+		return workflowConfig{}, fmt.Errorf("invalid WF21_SUMMARY_EXTRA_IMAGES: %w", err)
+	}
 	summaryLocation, err := time.LoadLocation(summaryTimezone)
 	if err != nil {
 		return workflowConfig{}, fmt.Errorf("invalid WF21_TIMEZONE %q: %w", summaryTimezone, err)
@@ -970,6 +985,7 @@ func loadConfig() (workflowConfig, error) {
 		SummarySecondEnabled:   summarySecondEnabled,
 		SummarySecondTab:       summarySecondTab,
 		SummarySecondRanges:    summarySecondRanges,
+		SummaryExtraImages:     summaryExtraImages,
 		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),
 		SummaryStabilityRuns:   getIntEnv("WF21_SUMMARY_STABILITY_RUNS", defaultSummaryStabilityRuns),
@@ -1113,6 +1129,52 @@ func parseSummaryRangeList(raw string) ([]string, error) {
 		ranges = append(ranges, token)
 	}
 	return ranges, nil
+}
+
+func parseSummaryImageRefs(raw, defaultTab string) ([]summaryImageRef, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	refs := make([]summaryImageRef, 0, len(parts))
+	for _, part := range parts {
+		token := strings.TrimSpace(part)
+		if token == "" {
+			continue
+		}
+
+		tab := strings.TrimSpace(defaultTab)
+		rangeToken := token
+		if bang := strings.Index(token, "!"); bang >= 0 {
+			tab = strings.TrimSpace(token[:bang])
+			rangeToken = strings.TrimSpace(token[bang+1:])
+		}
+		if tab == "" {
+			return nil, fmt.Errorf("missing tab for image range %q", token)
+		}
+		if _, err := parseA1Range(rangeToken); err != nil {
+			return nil, err
+		}
+
+		refs = append(refs, summaryImageRef{
+			Tab:   tab,
+			Range: rangeToken,
+		})
+	}
+	return refs, nil
+}
+
+func formatSummaryImageRefs(refs []summaryImageRef) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		items = append(items, fmt.Sprintf("%s!%s", ref.Tab, ref.Range))
+	}
+	return strings.Join(items, ",")
 }
 
 func googleCredentialsIdentityHint(cfg workflowConfig) (string, error) {

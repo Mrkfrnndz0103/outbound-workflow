@@ -402,6 +402,38 @@ func TestParseSummaryRangeListRejectsInvalidRange(t *testing.T) {
 	}
 }
 
+func TestParseSummaryImageRefsWithExplicitTabs(t *testing.T) {
+	refs, err := parseSummaryImageRefs("config!E6:Y31,config!E31:Y60", "config")
+	if err != nil {
+		t.Fatalf("parseSummaryImageRefs error: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs, got %d", len(refs))
+	}
+	if refs[0].Tab != "config" || refs[0].Range != "E6:Y31" {
+		t.Fatalf("unexpected first ref: %#v", refs[0])
+	}
+	if refs[1].Tab != "config" || refs[1].Range != "E31:Y60" {
+		t.Fatalf("unexpected second ref: %#v", refs[1])
+	}
+}
+
+func TestParseSummaryImageRefsUsesDefaultTab(t *testing.T) {
+	refs, err := parseSummaryImageRefs("E6:Y31,E31:Y60", "[SOC5] SOCPacked_Dashboard")
+	if err != nil {
+		t.Fatalf("parseSummaryImageRefs error: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs, got %d", len(refs))
+	}
+	if refs[0].Tab != "[SOC5] SOCPacked_Dashboard" || refs[0].Range != "E6:Y31" {
+		t.Fatalf("unexpected first ref: %#v", refs[0])
+	}
+	if refs[1].Tab != "[SOC5] SOCPacked_Dashboard" || refs[1].Range != "E31:Y60" {
+		t.Fatalf("unexpected second ref: %#v", refs[1])
+	}
+}
+
 func TestBuildDestinationSnapshotHashDeterministic(t *testing.T) {
 	pending := [][]string{{"A", "B"}, {"C", "D"}}
 	packed := [][]string{{"E", "F"}}

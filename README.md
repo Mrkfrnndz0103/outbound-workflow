@@ -346,7 +346,7 @@ go run ./cmd/workflow-ob-pending-dispatch
    - Pre-filter before tab routing: `Receiver Type == Station` and `Current Station == SOC 5`.
 7. Imports destination tabs in order: `pending_rcv`, then `packed_in_another_to`, then `no_lhpacking`.
 8. As soon as `pending_rcv` import is completed, writes a local timestamp to helper cell `config!B1` (same destination sheet by default), then continues remaining tab imports.
-9. After import flow, waits briefly for recalculation, captures `[SOC] Backlogs Summary!B2:Q59` as styled image, then sends to SeaTalk group.
+9. After import flow, waits briefly for recalculation, captures summary image(s), then sends to SeaTalk group in order: caption text first, then image 1, image 2, and optional extra images.
 
 Defaults:
 
@@ -409,6 +409,7 @@ Optional env:
 - `WF21_SUMMARY_SECOND_IMAGE_ENABLED` (default `true`)
 - `WF21_SUMMARY_SECOND_TAB` (default `config`)
 - `WF21_SUMMARY_SECOND_RANGES` (default `E154:Y184`; supports first token with tab prefix like `[SOC5] SOCPacked_Dashboard!A1:U9, B142:T167`)
+- `WF21_SUMMARY_EXTRA_IMAGES` (default empty; comma-separated extra images sent after image 2, each token supports tab prefix like `config!E6:Y31`)
 - `WF21_SUMMARY_SYNC_CELL` (default `config!B1`; helper cell updated with local timestamp after import sync, before the summary wait/send flow)
 - `WF21_SUMMARY_WAIT_SECONDS` (default `5`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)

@@ -233,6 +233,27 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		}
 		images = append(images, secondaryImage)
 	}
+	for _, ref := range cfg.SummaryExtraImages {
+		label := fmt.Sprintf("image_%d", len(images)+1)
+		extraImage, extraErr := buildEncodedSummaryImage(
+			ctx,
+			cfg,
+			sheetsSvc,
+			exportHTTPClient,
+			cfg.SummarySheetID,
+			ref.Tab,
+			ref.Range,
+			cfg.SummaryImageMaxWidthPx,
+			cfg.SummaryRenderScale,
+			cfg.SummaryAutoFitColumns,
+			cfg.SummaryImageMaxBase64,
+			label,
+		)
+		if extraErr != nil {
+			return result, extraErr
+		}
+		images = append(images, extraImage)
+	}
 
 	captionTS := currentSummaryCaptionTime(cfg, time.Now())
 
