@@ -58,6 +58,7 @@ const (
 	defaultSummaryRange           = "B2:Q59"
 	defaultSummarySecondTab       = "config"
 	defaultSummarySecondRanges    = "E154:Y184"
+	defaultSummaryExtraEnabled    = true
 	defaultSummaryExtraImages     = ""
 	defaultSummaryWaitAfterImport = 5 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
@@ -135,6 +136,7 @@ type workflowConfig struct {
 	SummarySecondEnabled   bool
 	SummarySecondTab       string
 	SummarySecondRanges    []string
+	SummaryExtraEnabled    bool
 	SummaryExtraImages     []summaryImageRef
 	SummaryWaitAfterImport time.Duration
 	SummaryStabilityWait   time.Duration
@@ -286,7 +288,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -294,6 +296,7 @@ func main() {
 			cfg.SummarySecondEnabled,
 			cfg.SummarySecondTab,
 			strings.Join(cfg.SummarySecondRanges, ","),
+			cfg.SummaryExtraEnabled,
 			formatSummaryImageRefs(cfg.SummaryExtraImages),
 			cfg.SummarySyncCell,
 			cfg.SummaryWaitAfterImport,
@@ -813,6 +816,10 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	summaryExtraEnabled, err := getBoolEnv("WF21_SUMMARY_EXTRA_IMAGES_ENABLED", defaultSummaryExtraEnabled)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summaryAutoFitColumns, err := getBoolEnv("WF21_SUMMARY_AUTO_FIT_COLUMNS", defaultSummaryAutoFitColumns)
 	if err != nil {
 		return workflowConfig{}, err
@@ -985,6 +992,7 @@ func loadConfig() (workflowConfig, error) {
 		SummarySecondEnabled:   summarySecondEnabled,
 		SummarySecondTab:       summarySecondTab,
 		SummarySecondRanges:    summarySecondRanges,
+		SummaryExtraEnabled:    summaryExtraEnabled,
 		SummaryExtraImages:     summaryExtraImages,
 		SummaryWaitAfterImport: getDurationSeconds("WF21_SUMMARY_WAIT_SECONDS", int(defaultSummaryWaitAfterImport/time.Second)),
 		SummaryStabilityWait:   getDurationSeconds("WF21_SUMMARY_STABILITY_WAIT_SECONDS", int(defaultSummaryStabilityWait/time.Second)),

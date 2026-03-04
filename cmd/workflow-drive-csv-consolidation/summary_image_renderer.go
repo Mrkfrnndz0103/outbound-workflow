@@ -240,26 +240,28 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 	// Extra images (e.g., image 3+) are best-effort.
 	// If one fails to render, skip remaining extras but keep required text + image 1/2 flow.
 	extraImages := make([]encodedSummaryImage, 0, len(cfg.SummaryExtraImages))
-	for _, ref := range cfg.SummaryExtraImages {
-		label := fmt.Sprintf("image_%d", len(images)+len(extraImages)+1)
-		extraImage, extraErr := buildEncodedSummaryImage(
-			ctx,
-			cfg,
-			sheetsSvc,
-			exportHTTPClient,
-			cfg.SummarySheetID,
-			ref.Tab,
-			ref.Range,
-			cfg.SummaryImageMaxWidthPx,
-			cfg.SummaryRenderScale,
-			cfg.SummaryAutoFitColumns,
-			cfg.SummaryImageMaxBase64,
-			label,
-		)
-		if extraErr != nil {
-			break
+	if cfg.SummaryExtraEnabled {
+		for _, ref := range cfg.SummaryExtraImages {
+			label := fmt.Sprintf("image_%d", len(images)+len(extraImages)+1)
+			extraImage, extraErr := buildEncodedSummaryImage(
+				ctx,
+				cfg,
+				sheetsSvc,
+				exportHTTPClient,
+				cfg.SummarySheetID,
+				ref.Tab,
+				ref.Range,
+				cfg.SummaryImageMaxWidthPx,
+				cfg.SummaryRenderScale,
+				cfg.SummaryAutoFitColumns,
+				cfg.SummaryImageMaxBase64,
+				label,
+			)
+			if extraErr != nil {
+				break
+			}
+			extraImages = append(extraImages, extraImage)
 		}
-		extraImages = append(extraImages, extraImage)
 	}
 
 	captionTS := currentSummaryCaptionTime(cfg, time.Now())

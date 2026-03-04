@@ -191,6 +191,8 @@ services:
         value: config
       - key: WF21_SUMMARY_SECOND_RANGES
         value: E157:Y195
+      - key: WF21_SUMMARY_EXTRA_IMAGES_ENABLED
+        value: "false"
       - key: WF21_SUMMARY_EXTRA_IMAGES
         value: ""
       - key: WF21_SUMMARY_SHEET_ID
