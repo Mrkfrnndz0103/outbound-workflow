@@ -1095,6 +1095,53 @@ func buildSummaryCaptionForBot(ts time.Time) string {
 	)
 }
 
+func buildSummaryErrorFallbackText(ts time.Time, label, link string) string {
+	return fmt.Sprintf(
+		"@All\nOutbound Pending for Dispatch as of %s.\n\n**%s**\n%s",
+		ts.Format("3:04 PM Jan-02"),
+		strings.TrimSpace(label),
+		strings.TrimSpace(link),
+	)
+}
+
+func buildSummaryErrorFallbackTextForBot(ts time.Time, label, link string) string {
+	return fmt.Sprintf(
+		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of %s.\n\n**%s**\n%s",
+		ts.Format("3:04 PM Jan-02"),
+		strings.TrimSpace(label),
+		strings.TrimSpace(link),
+	)
+}
+
+func sendSummaryErrorFallbackLink(ctx context.Context, cfg workflowConfig) error {
+	link := strings.TrimSpace(cfg.SummaryErrorLinkURL)
+	if link == "" {
+		return errors.New("WF21_SUMMARY_ERROR_LINK_URL is empty")
+	}
+	label := strings.TrimSpace(cfg.SummaryErrorLinkLabel)
+	if label == "" {
+		label = "Backlogs per hub level:"
+	}
+	captionTS := currentSummaryCaptionTime(cfg, time.Now())
+
+	if cfg.SummarySeaTalkMode == "webhook" {
+		sender := seatalk.NewSystemAccountClient(cfg.SummaryWebhookURL, cfg.SummarySendHTTPTimeout)
+		return sendSummaryWithRetry(ctx, "send summary fallback link to seatalk webhook", func() error {
+			return sender.SendTextWithAtAll(ctx, buildSummaryErrorFallbackText(captionTS, label, link), 1, true)
+		})
+	}
+
+	sender := seatalk.NewClient(seatalk.ClientConfig{
+		AppID:     cfg.SummarySeaTalkAppID,
+		AppSecret: cfg.SummarySeaTalkSecret,
+		BaseURL:   cfg.SummarySeaTalkBaseURL,
+		Timeout:   cfg.SummarySendHTTPTimeout,
+	})
+	return sendSummaryWithRetry(ctx, "send summary fallback link to seatalk bot", func() error {
+		return sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryErrorFallbackTextForBot(captionTS, label, link), 1)
+	})
+}
+
 func waitForStableRangeDigest(
 	ctx context.Context,
 	svc *sheets.Service,

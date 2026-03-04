@@ -196,6 +196,24 @@ func TestBuildSummaryCaptionForBot(t *testing.T) {
 	}
 }
 
+func TestBuildSummaryErrorFallbackText(t *testing.T) {
+	ts := time.Date(2026, 3, 5, 4, 55, 0, 0, time.FixedZone("UTC+8", 8*3600))
+	got := buildSummaryErrorFallbackText(ts, "Backlogs per hub level:", "https://bit.ly/47jGTJB")
+	want := "@All\nOutbound Pending for Dispatch as of 4:55 AM Mar-05.\n\n**Backlogs per hub level:**\nhttps://bit.ly/47jGTJB"
+	if got != want {
+		t.Fatalf("unexpected fallback text: got=%q want=%q", got, want)
+	}
+}
+
+func TestBuildSummaryErrorFallbackTextForBot(t *testing.T) {
+	ts := time.Date(2026, 3, 5, 4, 55, 0, 0, time.FixedZone("UTC+8", 8*3600))
+	got := buildSummaryErrorFallbackTextForBot(ts, "Backlogs per hub level:", "https://bit.ly/47jGTJB")
+	want := "<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Pending for Dispatch as of 4:55 AM Mar-05.\n\n**Backlogs per hub level:**\nhttps://bit.ly/47jGTJB"
+	if got != want {
+		t.Fatalf("unexpected fallback text: got=%q want=%q", got, want)
+	}
+}
+
 func TestFormatSummarySyncTimestamp(t *testing.T) {
 	ts := time.Date(2026, 3, 4, 17, 9, 45, 0, time.UTC)
 	got := formatSummarySyncTimestamp(ts)

@@ -410,6 +410,8 @@ Optional env:
 - `WF21_SUMMARY_SECOND_TAB` (default `config`)
 - `WF21_SUMMARY_SECOND_RANGES` (default `E154:Y184`; supports first token with tab prefix like `[SOC5] SOCPacked_Dashboard!A1:U9, B142:T167`)
 - `WF21_SUMMARY_EXTRA_IMAGES` (default empty; comma-separated extra images sent after image 2, each token supports tab prefix like `config!E6:Y31`)
+- `WF21_SUMMARY_ERROR_LINK_URL` (default empty; when set, sends fallback text with this clickable link if summary image export/send fails)
+- `WF21_SUMMARY_ERROR_LINK_LABEL` (default `Backlogs per hub level:`; markdown bold label shown above fallback link)
 - `WF21_SUMMARY_SYNC_CELL` (default `config!B1`; helper cell updated with local timestamp after import sync, before the summary wait/send flow)
 - `WF21_SUMMARY_WAIT_SECONDS` (default `5`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
