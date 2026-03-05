@@ -57,8 +57,15 @@ type GroupChatActor struct {
 }
 
 type GroupChatInfo struct {
-	GroupID   string `json:"group_id"`
-	GroupName string `json:"group_name"`
+	GroupID       string            `json:"group_id"`
+	GroupName     string            `json:"group_name"`
+	GroupSettings GroupChatSettings `json:"group_settings"`
+}
+
+type GroupChatSettings struct {
+	ChatHistoryForNewMembers string `json:"chat_history_for_new_members"`
+	CanNotifyWithAtAll       bool   `json:"can_notify_with_at_all"`
+	CanViewMemberList        bool   `json:"can_view_member_list"`
 }
 
 type BotAddedToGroupChatEvent struct {

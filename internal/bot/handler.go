@@ -254,10 +254,15 @@ func (s *Server) handleBotAddedToGroupChatEvent(eventRaw json.RawMessage) {
 		return
 	}
 	s.logger.Printf(
-		"event=bot_added_to_group_chat group_id=%s group_name=%q inviter=%s",
+		"event=bot_added_to_group_chat group_id=%s group_name=%q inviter_employee=%s inviter_seatalk_id=%s inviter_email=%s chat_history_for_new_members=%q can_notify_with_at_all=%t can_view_member_list=%t",
 		event.Group.GroupID,
 		event.Group.GroupName,
 		event.Inviter.EmployeeCode,
+		event.Inviter.SeatalkID,
+		event.Inviter.Email,
+		event.Group.GroupSettings.ChatHistoryForNewMembers,
+		event.Group.GroupSettings.CanNotifyWithAtAll,
+		event.Group.GroupSettings.CanViewMemberList,
 	)
 }
 
