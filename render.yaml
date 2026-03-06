@@ -237,33 +237,7 @@ services:
         value: Mjk2ODA1MDg0MTMw
       - key: WF21_SEATALK_BASE_URL
         value: https://openapi.seatalk.io
-      # Secrets below stay unmanaged (set manually in Render or via API/CI secret sync).
-      - key: WF21_SEATALK_APP_SECRET
-        sync: false
-      - key: WF21_GOOGLE_CREDENTIALS_JSON
-        sync: false
-      - key: WF21_R2_ACCOUNT_ID
-        sync: false
-      - key: WF21_R2_BUCKET
-        sync: false
-      - key: WF21_R2_ACCESS_KEY_ID
-        sync: false
-      - key: WF21_R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: WF21_SEATALK_WEBHOOK_URL
-        sync: false
-      - key: SEATALK_SYSTEM_WEBHOOK_URL
-        sync: false
-
-  - type: web
-    name: go-bot-workflow-mdt-updates
-    runtime: go
-    plan: free
-    autoDeploy: false
-    healthCheckPath: /healthz
-    buildCommand: go build -o bin/workflow-mdt-updates ./cmd/workflow-mdt-updates
-    startCommand: ./bin/workflow-mdt-updates
-    envVars:
+      # WF3 runs in the same container as WF2.1.
       - key: WF3_GOOGLE_CREDENTIALS_FILE
         value: ""
       - key: WF3_SHEET_ID
@@ -311,7 +285,7 @@ services:
       - key: WF3_TEST_SEND_ONCE
         value: "false"
       - key: WF3_ENABLE_HEALTH_SERVER
-        value: "true"
+        value: "false"
       - key: WF3_HEALTH_PORT
         value: ""
       - key: WF3_STATE_FILE
@@ -321,6 +295,22 @@ services:
       - key: WF3_TEMP_DIR
         value: ""
       # Secrets below stay unmanaged (set manually in Render or via API/CI secret sync).
+      - key: WF21_SEATALK_APP_SECRET
+        sync: false
+      - key: WF21_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF21_R2_ACCOUNT_ID
+        sync: false
+      - key: WF21_R2_BUCKET
+        sync: false
+      - key: WF21_R2_ACCESS_KEY_ID
+        sync: false
+      - key: WF21_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: WF21_SEATALK_WEBHOOK_URL
+        sync: false
+      - key: SEATALK_SYSTEM_WEBHOOK_URL
+        sync: false
       - key: WF3_SEATALK_APP_SECRET
         sync: false
       - key: WF3_GOOGLE_CREDENTIALS_JSON
