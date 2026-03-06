@@ -158,7 +158,7 @@ services:
       - key: WF21_STATUS_FILE
         value: data/workflow2-1-drive-csv-consolidation-status.json
       - key: WF21_BOOTSTRAP_PROCESS_EXISTING
-        value: "true"
+        value: "false"
       - key: WF21_DROP_LEADING_UNNAMED_COLUMN
         value: "true"
       - key: WF21_DRY_RUN
@@ -183,6 +183,8 @@ services:
         value: ""
       - key: WF21_SUMMARY_SEND_ENABLED
         value: "true"
+      - key: WF21_USE_BOT_CONFIG
+        value: "false"
       - key: WF21_SUMMARY_SEATALK_MODE
         value: bot
       - key: WF21_SUMMARY_SECOND_IMAGE_ENABLED

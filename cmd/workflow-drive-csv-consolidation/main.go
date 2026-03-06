@@ -125,6 +125,7 @@ type workflowConfig struct {
 
 	SummarySendEnabled     bool
 	SummarySeaTalkMode     string
+	SummaryTargetSource    string
 	SummaryWebhookURL      string
 	SummarySeaTalkAppID    string
 	SummarySeaTalkSecret   string
@@ -288,8 +289,10 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s target_source=%s target_group=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
 			cfg.SummarySeaTalkMode,
+			cfg.SummaryTargetSource,
+			cfg.SummarySeaTalkGroupID,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
 			cfg.SummaryRange,
@@ -309,6 +312,9 @@ func main() {
 			cfg.SummaryPDFConverter,
 			cfg.SummaryTimezone,
 		)
+		if cfg.SummarySeaTalkMode == "webhook" {
+			logger.Printf("summary snapshot webhook target_source=%s webhook_url=%s", cfg.SummaryTargetSource, cfg.SummaryWebhookURL)
+		}
 	}
 
 	cycle := 1
@@ -824,10 +830,15 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	useBotConfig, err := getBoolEnv("WF21_USE_BOT_CONFIG", true)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summarySeaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SUMMARY_SEATALK_MODE"),
 		"bot",
 	)))
+	summaryTargetSource := "env"
 
 	credsFile := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_GOOGLE_CREDENTIALS_FILE")),
@@ -884,7 +895,7 @@ func loadConfig() (workflowConfig, error) {
 	))
 	botConfigSheetID := strings.TrimSpace(os.Getenv("BOT_CONFIG_SHEET_ID"))
 	botConfigTab := strings.TrimSpace(os.Getenv("BOT_CONFIG_TAB"))
-	if botConfigSheetID != "" {
+	if useBotConfig && botConfigSheetID != "" {
 		botCfgSvc, svcErr := newReadonlySheetsService(context.Background(), credsFile, credsJSON)
 		if svcErr != nil {
 			return workflowConfig{}, fmt.Errorf("create sheets service for bot_config: %w", svcErr)
@@ -905,6 +916,7 @@ func loadConfig() (workflowConfig, error) {
 		summarySeaTalkAppID = row.AppID
 		summarySeaTalkSecret = row.AppSecret
 		summaryWebhookURL = row.WebhookURL
+		summaryTargetSource = "bot_config"
 	}
 	summaryTimezone := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_TIMEZONE")),
@@ -972,6 +984,7 @@ func loadConfig() (workflowConfig, error) {
 		HealthListenAddr:            normalizeListenAddr(healthPort),
 		SummarySendEnabled:          summarySendEnabled,
 		SummarySeaTalkMode:          summarySeaTalkMode,
+		SummaryTargetSource:         summaryTargetSource,
 		SummaryWebhookURL:           summaryWebhookURL,
 		SummarySeaTalkAppID:         summarySeaTalkAppID,
 		SummarySeaTalkSecret:        summarySeaTalkSecret,

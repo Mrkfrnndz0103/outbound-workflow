@@ -211,7 +211,7 @@ func main() {
 		startHealthServer(sigCtx, cfg, logger)
 	}
 
-	logger.Printf("watch mode enabled poll_interval=%s monitor=%s!%s debounce=%s", cfg.PollInterval, cfg.SheetTab, cfg.MonitorRange, cfg.SendDebounce)
+	logger.Printf("watch mode enabled poll_interval=%s monitor=%s!%s debounce=%s target_group=%s", cfg.PollInterval, cfg.SheetTab, cfg.MonitorRange, cfg.SendDebounce, cfg.SeaTalkGroupID)
 	cycle := 1
 	for {
 		if err = runCycle(sigCtx, cfg, sheetsSvc, authHTTPClient, seaTalkClient, &state, &stateExists, logger, cycle); err != nil {
