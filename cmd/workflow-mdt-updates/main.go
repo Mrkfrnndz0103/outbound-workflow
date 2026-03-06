@@ -612,8 +612,8 @@ func buildCaption(loc *time.Location, now time.Time) string {
 	}
 	yesterday := now.In(loc).AddDate(0, 0, -1)
 	return fmt.Sprintf(
-		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Packed to Depart Compliance for (%s)",
-		yesterday.Format("Monday, Jan 02 2006"),
+		"<mention-tag target=\"seatalk://user?id=0\"/>\nOutbound Packed to Depart Compliance for %s\n\n`- This Report is auto generated once mdt dashboard updates.`",
+		yesterday.Format("Monday, Jan 02, 2006"),
 	)
 }
 
