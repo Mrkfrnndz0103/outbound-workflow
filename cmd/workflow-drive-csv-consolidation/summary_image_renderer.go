@@ -513,7 +513,7 @@ func renderSummaryRangeToPNG(
 		if err == nil {
 			return pngRaw, nil
 		}
-		if !shouldFallbackToStyledOnPDFExportError(err) {
+		if !shouldUseStyledFallback(cfg, err) {
 			return nil, err
 		}
 
@@ -570,7 +570,7 @@ func renderConnectedSummaryRangesToPNG(
 		}
 		pngRaw, err := renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, rng)
 		if err != nil {
-			if shouldFallbackToStyledOnPDFExportError(err) {
+			if shouldUseStyledFallback(cfg, err) {
 				connectedData, styledErr := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
 				if styledErr != nil {
 					return nil, fmt.Errorf("pdf export failed and styled fallback failed: %w (original: %v)", styledErr, err)
@@ -646,6 +646,13 @@ func shouldFallbackToStyledOnPDFExportError(err error) bool {
 		return false
 	}
 	return isPDFExportAccessDenied(err) || isRetryablePDFExportFailure(err)
+}
+
+func shouldUseStyledFallback(cfg workflowConfig, err error) bool {
+	if cfg.SummaryPDFStrict {
+		return false
+	}
+	return shouldFallbackToStyledOnPDFExportError(err)
 }
 
 func isRetryablePDFExportFailure(err error) bool {

@@ -146,6 +146,7 @@ type workflowConfig struct {
 	SummaryAutoFitColumns  bool
 	SummaryPDFDPI          int
 	SummaryPDFConverter    string
+	SummaryPDFStrict       bool
 	SummaryImageMaxWidthPx int
 	SummaryImageMaxBase64  int
 	SummarySendHTTPTimeout time.Duration
@@ -288,7 +289,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
+			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
@@ -307,6 +308,7 @@ func main() {
 			cfg.SummaryAutoFitColumns,
 			cfg.SummaryPDFDPI,
 			cfg.SummaryPDFConverter,
+			cfg.SummaryPDFStrict,
 			cfg.SummaryTimezone,
 		)
 	}
@@ -824,6 +826,10 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	summaryPDFStrict, err := getBoolEnv("WF21_SUMMARY_PDF_STRICT", false)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summarySeaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SUMMARY_SEATALK_MODE"),
 		"bot",
@@ -1002,6 +1008,7 @@ func loadConfig() (workflowConfig, error) {
 		SummaryAutoFitColumns:  summaryAutoFitColumns,
 		SummaryPDFDPI:          getIntEnv("WF21_SUMMARY_PDF_DPI", defaultSummaryPDFDPI),
 		SummaryPDFConverter:    strings.ToLower(strings.TrimSpace(firstNonEmpty(os.Getenv("WF21_SUMMARY_PDF_CONVERTER"), defaultSummaryPDFConverter))),
+		SummaryPDFStrict:       summaryPDFStrict,
 		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
 		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
@@ -1092,6 +1099,11 @@ func loadConfig() (workflowConfig, error) {
 	case "pdftoppm", "magick":
 	default:
 		return workflowConfig{}, fmt.Errorf("WF21_SUMMARY_PDF_CONVERTER must be one of: auto, pdftoppm, magick (got %q)", cfg.SummaryPDFConverter)
+	}
+	if cfg.SummaryRenderMode == "pdf_png" {
+		if _, err = resolvePDFConverter(cfg.SummaryPDFConverter); err != nil {
+			return workflowConfig{}, fmt.Errorf("WF21_SUMMARY_RENDER_MODE=pdf_png requires converter availability: %w", err)
+		}
 	}
 	if cfg.SummaryImageMaxWidthPx < 1200 {
 		cfg.SummaryImageMaxWidthPx = 1200

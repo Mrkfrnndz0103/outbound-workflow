@@ -219,6 +219,8 @@ services:
         value: "180"
       - key: WF21_SUMMARY_PDF_CONVERTER
         value: pdftoppm
+      - key: WF21_SUMMARY_PDF_STRICT
+        value: "true"
       - key: WF21_SUMMARY_IMAGE_MAX_WIDTH_PX
         value: "1800"
       - key: WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES

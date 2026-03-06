@@ -176,6 +176,20 @@ func TestShouldFallbackToStyledOnPDFExportError(t *testing.T) {
 	}
 }
 
+func TestShouldUseStyledFallbackHonorsStrictMode(t *testing.T) {
+	retryableErr := errors.New("sheets export pdf status=500 body=Google Docs encountered an error")
+
+	nonStrict := workflowConfig{SummaryPDFStrict: false}
+	if !shouldUseStyledFallback(nonStrict, retryableErr) {
+		t.Fatalf("expected fallback in non-strict mode")
+	}
+
+	strict := workflowConfig{SummaryPDFStrict: true}
+	if shouldUseStyledFallback(strict, retryableErr) {
+		t.Fatalf("expected no fallback in strict mode")
+	}
+}
+
 func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	row := []string{"TO-1", "SPX-1", "Receiver"}
 	picked := pickColumns(row, []int{0, 1, 2, 0})
