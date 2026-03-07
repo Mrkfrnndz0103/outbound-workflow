@@ -290,11 +290,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-<<<<<<< HEAD
-			"summary snapshot enabled mode=%s target_source=%s target_group=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s timezone=%s",
-=======
-			"summary snapshot enabled mode=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
->>>>>>> b93a055287fecda6f829952c8e9adbdf945c276e
+			"summary snapshot enabled mode=%s target_source=%s target_group=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummaryTargetSource,
 			cfg.SummarySeaTalkGroupID,
@@ -836,11 +832,11 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
-<<<<<<< HEAD
 	useBotConfig, err := getBoolEnv("WF21_USE_BOT_CONFIG", true)
-=======
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summaryPDFStrict, err := getBoolEnv("WF21_SUMMARY_PDF_STRICT", false)
->>>>>>> b93a055287fecda6f829952c8e9adbdf945c276e
 	if err != nil {
 		return workflowConfig{}, err
 	}
