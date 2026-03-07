@@ -712,7 +712,28 @@ func renderRangeViaPDFPNG(
 	if err != nil {
 		return nil, err
 	}
-	exportURL := buildSheetsPDFExportURL(sheetID, sheetGID, captureRange)
+	rangeExportURL := buildSheetsPDFExportURL(sheetID, sheetGID, captureRange)
+	pdfRaw, err := exportSheetsPDFWithRetry(ctx, exportHTTPClient, rangeExportURL)
+	if err != nil {
+		if !isRetryablePDFExportFailure(err) {
+			return nil, err
+		}
+		fullTabExportURL := buildSheetsPDFExportURLWithoutRange(sheetID, sheetGID)
+		var fallbackErr error
+		pdfRaw, fallbackErr = exportSheetsPDFWithRetry(ctx, exportHTTPClient, fullTabExportURL)
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("sheets export pdf failed for range and full-tab fallback: range_err=%v fallback_err=%w", err, fallbackErr)
+		}
+	}
+
+	pngRaw, err := convertPDFToPNG(ctx, pdfRaw, cfg.SummaryPDFDPI, cfg.SummaryPDFConverter, cfg.TempDir)
+	if err != nil {
+		return nil, err
+	}
+	return pngRaw, nil
+}
+
+func exportSheetsPDFWithRetry(ctx context.Context, exportHTTPClient *http.Client, exportURL string) ([]byte, error) {
 	delay := summaryPDFExportRetryBase
 	for attempt := 1; attempt <= summaryPDFExportRetryMax; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, exportURL, nil)
@@ -730,11 +751,11 @@ func renderRangeViaPDFPNG(
 			return nil, fmt.Errorf("read sheets export pdf body: %w", readErr)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			statusErr := fmt.Errorf("sheets export pdf status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(pdfRaw)))
+			statusErr := fmt.Errorf("sheets export pdf status=%d body=%s", resp.StatusCode, truncateHTTPErrorBody(pdfRaw))
 			if attempt == summaryPDFExportRetryMax || !isRetryablePDFExportStatus(resp.StatusCode) {
 				return nil, statusErr
 			}
-			if err := waitWithContext(ctx, delay); err != nil {
+			if err = waitWithContext(ctx, delay); err != nil {
 				return nil, err
 			}
 			delay *= 2
@@ -743,14 +764,17 @@ func renderRangeViaPDFPNG(
 			}
 			continue
 		}
-
-		pngRaw, err := convertPDFToPNG(ctx, pdfRaw, cfg.SummaryPDFDPI, cfg.SummaryPDFConverter, cfg.TempDir)
-		if err != nil {
-			return nil, err
-		}
-		return pngRaw, nil
+		return pdfRaw, nil
 	}
 	return nil, errors.New("sheets export pdf retry exhausted")
+}
+
+func truncateHTTPErrorBody(raw []byte) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if len(trimmed) <= 1200 {
+		return trimmed
+	}
+	return trimmed[:1200] + "...(truncated)"
 }
 
 func lookupSheetGID(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab string) (int64, error) {
@@ -778,6 +802,24 @@ func buildSheetsPDFExportURL(sheetID string, gid int64, captureRange string) str
 	values.Set("format", "pdf")
 	values.Set("gid", strconv.FormatInt(gid, 10))
 	values.Set("range", strings.TrimSpace(captureRange))
+	values.Set("attachment", "false")
+	values.Set("sheetnames", "false")
+	values.Set("printtitle", "false")
+	values.Set("pagenum", "UNDEFINED")
+	values.Set("gridlines", "false")
+	values.Set("fzr", "false")
+	values.Set("fitw", "true")
+	values.Set("top_margin", "0")
+	values.Set("bottom_margin", "0")
+	values.Set("left_margin", "0")
+	values.Set("right_margin", "0")
+	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?%s", url.PathEscape(strings.TrimSpace(sheetID)), values.Encode())
+}
+
+func buildSheetsPDFExportURLWithoutRange(sheetID string, gid int64) string {
+	values := url.Values{}
+	values.Set("format", "pdf")
+	values.Set("gid", strconv.FormatInt(gid, 10))
 	values.Set("attachment", "false")
 	values.Set("sheetnames", "false")
 	values.Set("printtitle", "false")

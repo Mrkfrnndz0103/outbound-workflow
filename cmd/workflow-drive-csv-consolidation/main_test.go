@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +268,36 @@ func TestBuildSheetRangeRefQuotesSpecialTab(t *testing.T) {
 	want := "'[SOC] Backlogs Summary'!B2:Q59"
 	if got != want {
 		t.Fatalf("unexpected range ref: got=%q want=%q", got, want)
+	}
+}
+
+func TestBuildSheetsPDFExportURLWithoutRangeOmitsRangeParam(t *testing.T) {
+	rawURL := buildSheetsPDFExportURLWithoutRange("sheet-id", 12345)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	if got := parsed.Query().Get("range"); got != "" {
+		t.Fatalf("expected no range param, got %q", got)
+	}
+	if got := parsed.Query().Get("gid"); got != "12345" {
+		t.Fatalf("unexpected gid: %q", got)
+	}
+}
+
+func TestTruncateHTTPErrorBody(t *testing.T) {
+	short := "short body"
+	if got := truncateHTTPErrorBody([]byte(short)); got != short {
+		t.Fatalf("expected short body unchanged, got %q", got)
+	}
+
+	long := strings.Repeat("x", 1500)
+	got := truncateHTTPErrorBody([]byte(long))
+	if !strings.HasSuffix(got, "...(truncated)") {
+		t.Fatalf("expected truncated suffix, got %q", got)
+	}
+	if len(got) >= len(long) {
+		t.Fatalf("expected truncated output length < input length")
 	}
 }
 
