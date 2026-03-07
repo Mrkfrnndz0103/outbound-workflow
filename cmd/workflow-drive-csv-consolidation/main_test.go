@@ -113,6 +113,83 @@ func TestIsRetryablePDFExportStatus(t *testing.T) {
 	}
 }
 
+func TestExtractHTTPStatusCodeFromError(t *testing.T) {
+	if got := extractHTTPStatusCodeFromError(errors.New("sheets export pdf status=500 body=oops")); got != 500 {
+		t.Fatalf("expected status code 500, got %d", got)
+	}
+	if got := extractHTTPStatusCodeFromError(errors.New("no status code in this error")); got != 0 {
+		t.Fatalf("expected missing status code to return 0, got %d", got)
+	}
+}
+
+func TestShouldFallbackToStyledOnPDFExportError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "access denied",
+			err:  errors.New("sheets export pdf status=403 body=access denied"),
+			want: true,
+		},
+		{
+			name: "retryable status 500",
+			err:  errors.New("sheets export pdf status=500 body=Google Docs encountered an error"),
+			want: true,
+		},
+		{
+			name: "retryable status 429",
+			err:  errors.New("sheets export pdf status=429 body=rate limit"),
+			want: true,
+		},
+		{
+			name: "retry exhausted",
+			err:  errors.New("sheets export pdf retry exhausted"),
+			want: true,
+		},
+		{
+			name: "network timeout",
+			err:  errors.New("request sheets export pdf: timeout awaiting response headers"),
+			want: true,
+		},
+		{
+			name: "non-retryable status",
+			err:  errors.New("sheets export pdf status=404 body=not found"),
+			want: false,
+		},
+		{
+			name: "converter failure",
+			err:  errors.New("magick convert failed: exit status 1"),
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldFallbackToStyledOnPDFExportError(tc.err)
+			if got != tc.want {
+				t.Fatalf("unexpected fallback decision: got=%t want=%t err=%v", got, tc.want, tc.err)
+			}
+		})
+	}
+}
+
+func TestShouldUseStyledFallbackHonorsStrictMode(t *testing.T) {
+	retryableErr := errors.New("sheets export pdf status=500 body=Google Docs encountered an error")
+
+	nonStrict := workflowConfig{SummaryPDFStrict: false}
+	if !shouldUseStyledFallback(nonStrict, retryableErr) {
+		t.Fatalf("expected fallback in non-strict mode")
+	}
+
+	strict := workflowConfig{SummaryPDFStrict: true}
+	if shouldUseStyledFallback(strict, retryableErr) {
+		t.Fatalf("expected no fallback in strict mode")
+	}
+}
+
 func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	row := []string{"TO-1", "SPX-1", "Receiver"}
 	picked := pickColumns(row, []int{0, 1, 2, 0})

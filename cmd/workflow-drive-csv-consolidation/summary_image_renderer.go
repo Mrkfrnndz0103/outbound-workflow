@@ -116,6 +116,8 @@ var (
 	boldItMono   *opentype.Font
 	fontFaceMu   sync.Mutex
 	fontFaceMap  = map[string]font.Face{}
+
+	pdfExportStatusCodePattern = regexp.MustCompile(`status=(\d{3})`)
 )
 
 const (
@@ -511,15 +513,15 @@ func renderSummaryRangeToPNG(
 		if err == nil {
 			return pngRaw, nil
 		}
-		if !isPDFExportAccessDenied(err) {
+		if !shouldUseStyledFallback(cfg, err) {
 			return nil, err
 		}
 
-		// Fallback: if docs export is denied for this identity, use styled renderer
+		// Fallback: if docs export is unavailable, use styled renderer
 		// so cycle processing and SeaTalk sending can continue.
 		styledRange, styledErr := readStyledRange(ctx, sheetsSvc, sheetID, tab, captureRange)
 		if styledErr != nil {
-			return nil, fmt.Errorf("pdf export access denied and styled fallback failed: %w (original: %v)", styledErr, err)
+			return nil, fmt.Errorf("pdf export failed and styled fallback failed: %w (original: %v)", styledErr, err)
 		}
 		return renderStyledRangeImage(styledRange, maxWidthPx, renderScale, autoFitColumns)
 	}
@@ -568,10 +570,10 @@ func renderConnectedSummaryRangesToPNG(
 		}
 		pngRaw, err := renderRangeViaPDFPNG(ctx, cfg, sheetsSvc, exportHTTPClient, sheetID, tab, rng)
 		if err != nil {
-			if isPDFExportAccessDenied(err) {
+			if shouldUseStyledFallback(cfg, err) {
 				connectedData, styledErr := readConnectedStyledRanges(ctx, sheetsSvc, sheetID, tab, ranges)
 				if styledErr != nil {
-					return nil, fmt.Errorf("pdf export access denied and styled fallback failed: %w (original: %v)", styledErr, err)
+					return nil, fmt.Errorf("pdf export failed and styled fallback failed: %w (original: %v)", styledErr, err)
 				}
 				return renderStyledRangeImage(connectedData, maxWidthPx, renderScale, autoFitColumns)
 			}
@@ -637,6 +639,57 @@ func isPDFExportAccessDenied(err error) bool {
 	return strings.Contains(low, "access denied") ||
 		strings.Contains(low, "you need access") ||
 		strings.Contains(low, "forbidden")
+}
+
+func shouldFallbackToStyledOnPDFExportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return isPDFExportAccessDenied(err) || isRetryablePDFExportFailure(err)
+}
+
+func shouldUseStyledFallback(cfg workflowConfig, err error) bool {
+	if cfg.SummaryPDFStrict {
+		return false
+	}
+	return shouldFallbackToStyledOnPDFExportError(err)
+}
+
+func isRetryablePDFExportFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	if strings.Contains(low, "sheets export pdf retry exhausted") {
+		return true
+	}
+	statusCode := extractHTTPStatusCodeFromError(err)
+	if statusCode > 0 && isRetryablePDFExportStatus(statusCode) {
+		return true
+	}
+	if strings.Contains(low, "request sheets export pdf:") &&
+		(strings.Contains(low, "timeout") ||
+			strings.Contains(low, "temporar") ||
+			strings.Contains(low, "connection reset") ||
+			strings.Contains(low, "eof")) {
+		return true
+	}
+	return false
+}
+
+func extractHTTPStatusCodeFromError(err error) int {
+	if err == nil {
+		return 0
+	}
+	matches := pdfExportStatusCodePattern.FindStringSubmatch(strings.ToLower(err.Error()))
+	if len(matches) < 2 {
+		return 0
+	}
+	statusCode, convErr := strconv.Atoi(matches[1])
+	if convErr != nil {
+		return 0
+	}
+	return statusCode
 }
 
 func isRetryablePDFExportStatus(statusCode int) bool {
