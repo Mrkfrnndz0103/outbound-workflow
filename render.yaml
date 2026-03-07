@@ -3,7 +3,7 @@ services:
     name: go-bot-seatalk-bot
     runtime: go
     plan: free
-    autoDeploy: false
+    autoDeploy: true
     healthCheckPath: /healthz
     buildCommand: go build -o bin/seatalk-bot ./cmd/seatalk-bot
     startCommand: ./bin/seatalk-bot
