@@ -127,9 +127,9 @@ const (
 	summarySendRetryMax         = 5
 	summarySendRetryBase        = 1 * time.Second
 	summarySendRetryMaxDur      = 8 * time.Second
-	summaryPDFExportRetryMax    = 5
-	summaryPDFExportRetryBase   = 1 * time.Second
-	summaryPDFExportRetryMaxDur = 8 * time.Second
+	summaryPDFExportRetryMax    = 8
+	summaryPDFExportRetryBase   = 2 * time.Second
+	summaryPDFExportRetryMaxDur = 30 * time.Second
 	summarySyncPollInterval     = 1 * time.Second
 	summarySyncMaxWait          = 30 * time.Second
 )
