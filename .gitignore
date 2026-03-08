@@ -10,7 +10,7 @@ secrets/
 /google-credentials.json
 /service-account.json
 docs/
-/encopy.txt
+/eencopy.txt
 
 # Runtime data and logs
 data/*.json
