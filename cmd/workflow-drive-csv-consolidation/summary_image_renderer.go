@@ -712,15 +712,15 @@ func renderRangeViaPDFPNG(
 	if err != nil {
 		return nil, err
 	}
-	rangeExportURL := buildSheetsPDFExportURL(sheetID, sheetGID, captureRange)
-	pdfRaw, err := exportSheetsPDFWithRetry(ctx, exportHTTPClient, rangeExportURL)
+	rangeExportURLs := buildSheetsPDFExportURLCandidates(sheetID, sheetGID, captureRange)
+	pdfRaw, err := exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, rangeExportURLs)
 	if err != nil {
 		if !isRetryablePDFExportFailure(err) {
 			return nil, err
 		}
-		fullTabExportURL := buildSheetsPDFExportURLWithoutRange(sheetID, sheetGID)
+		fullTabExportURL := buildSheetsPDFExportURLWithoutRangeCandidates(sheetID, sheetGID)
 		var fallbackErr error
-		pdfRaw, fallbackErr = exportSheetsPDFWithRetry(ctx, exportHTTPClient, fullTabExportURL)
+		pdfRaw, fallbackErr = exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, fullTabExportURL)
 		if fallbackErr != nil {
 			return nil, fmt.Errorf("sheets export pdf failed for range and full-tab fallback: range_err=%v fallback_err=%w", err, fallbackErr)
 		}
@@ -733,6 +733,24 @@ func renderRangeViaPDFPNG(
 	return pngRaw, nil
 }
 
+func exportSheetsPDFViaCandidateURLs(ctx context.Context, exportHTTPClient *http.Client, urls []string) ([]byte, error) {
+	if len(urls) == 0 {
+		return nil, errors.New("no sheets export pdf endpoint candidates configured")
+	}
+	errorsSeen := make([]string, 0, len(urls))
+	for idx, exportURL := range urls {
+		pdfRaw, err := exportSheetsPDFWithRetry(ctx, exportHTTPClient, exportURL)
+		if err == nil {
+			return pdfRaw, nil
+		}
+		errorsSeen = append(errorsSeen, fmt.Sprintf("candidate_%d=%s", idx+1, truncateErrorMessage(err, 420)))
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+	return nil, fmt.Errorf("all sheets export endpoint candidates failed: %s", strings.Join(errorsSeen, " | "))
+}
+
 func exportSheetsPDFWithRetry(ctx context.Context, exportHTTPClient *http.Client, exportURL string) ([]byte, error) {
 	delay := summaryPDFExportRetryBase
 	for attempt := 1; attempt <= summaryPDFExportRetryMax; attempt++ {
@@ -740,6 +758,7 @@ func exportSheetsPDFWithRetry(ctx context.Context, exportHTTPClient *http.Client
 		if err != nil {
 			return nil, fmt.Errorf("build sheets export request: %w", err)
 		}
+		req.Header.Set("Accept", "application/pdf,*/*")
 		resp, err := exportHTTPClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("request sheets export pdf: %w", err)
@@ -767,6 +786,17 @@ func exportSheetsPDFWithRetry(ctx context.Context, exportHTTPClient *http.Client
 		return pdfRaw, nil
 	}
 	return nil, errors.New("sheets export pdf retry exhausted")
+}
+
+func truncateErrorMessage(err error, limit int) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(err.Error())
+	if limit <= 0 || len(msg) <= limit {
+		return msg
+	}
+	return msg[:limit] + "...(truncated)"
 }
 
 func truncateHTTPErrorBody(raw []byte) string {
@@ -798,40 +828,104 @@ func lookupSheetGID(ctx context.Context, sheetsSvc *sheets.Service, sheetID, tab
 }
 
 func buildSheetsPDFExportURL(sheetID string, gid int64, captureRange string) string {
-	values := url.Values{}
-	values.Set("format", "pdf")
-	values.Set("gid", strconv.FormatInt(gid, 10))
-	values.Set("range", strings.TrimSpace(captureRange))
-	values.Set("attachment", "false")
-	values.Set("sheetnames", "false")
-	values.Set("printtitle", "false")
-	values.Set("pagenum", "UNDEFINED")
-	values.Set("gridlines", "false")
-	values.Set("fzr", "false")
-	values.Set("fitw", "true")
-	values.Set("top_margin", "0")
-	values.Set("bottom_margin", "0")
-	values.Set("left_margin", "0")
-	values.Set("right_margin", "0")
-	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?%s", url.PathEscape(strings.TrimSpace(sheetID)), values.Encode())
+	urls := buildSheetsPDFExportURLCandidates(sheetID, gid, captureRange)
+	if len(urls) == 0 {
+		return ""
+	}
+	return urls[0]
 }
 
 func buildSheetsPDFExportURLWithoutRange(sheetID string, gid int64) string {
+	urls := buildSheetsPDFExportURLWithoutRangeCandidates(sheetID, gid)
+	if len(urls) == 0 {
+		return ""
+	}
+	return urls[0]
+}
+
+func buildSheetsPDFExportURLCandidates(sheetID string, gid int64, captureRange string) []string {
+	rng := strings.TrimSpace(captureRange)
+	if rng == "" {
+		return buildSheetsPDFExportURLWithoutRangeCandidates(sheetID, gid)
+	}
+
+	primary := basePDFExportValues(gid)
+	primary.Set("range", rng)
+	primary.Set("attachment", "false")
+	primary.Set("sheetnames", "false")
+	primary.Set("printtitle", "false")
+	primary.Set("pagenum", "UNDEFINED")
+	primary.Set("gridlines", "false")
+	primary.Set("fzr", "false")
+	primary.Set("fitw", "true")
+	primary.Set("top_margin", "0")
+	primary.Set("bottom_margin", "0")
+	primary.Set("left_margin", "0")
+	primary.Set("right_margin", "0")
+
+	compat := basePDFExportValues(gid)
+	compat.Set("range", rng)
+	compat.Set("attachment", "false")
+	compat.Set("fitw", "true")
+	compat.Set("gridlines", "false")
+
+	minimal := basePDFExportValues(gid)
+	minimal.Set("range", rng)
+
+	return buildPDFExportURLCandidates(sheetID, primary, compat, minimal)
+}
+
+func buildSheetsPDFExportURLWithoutRangeCandidates(sheetID string, gid int64) []string {
+	primary := basePDFExportValues(gid)
+	primary.Set("attachment", "false")
+	primary.Set("sheetnames", "false")
+	primary.Set("printtitle", "false")
+	primary.Set("pagenum", "UNDEFINED")
+	primary.Set("gridlines", "false")
+	primary.Set("fzr", "false")
+	primary.Set("fitw", "true")
+	primary.Set("top_margin", "0")
+	primary.Set("bottom_margin", "0")
+	primary.Set("left_margin", "0")
+	primary.Set("right_margin", "0")
+
+	compat := basePDFExportValues(gid)
+	compat.Set("attachment", "false")
+	compat.Set("fitw", "true")
+	compat.Set("gridlines", "false")
+
+	minimal := basePDFExportValues(gid)
+
+	return buildPDFExportURLCandidates(sheetID, primary, compat, minimal)
+}
+
+func basePDFExportValues(gid int64) url.Values {
 	values := url.Values{}
 	values.Set("format", "pdf")
 	values.Set("gid", strconv.FormatInt(gid, 10))
-	values.Set("attachment", "false")
-	values.Set("sheetnames", "false")
-	values.Set("printtitle", "false")
-	values.Set("pagenum", "UNDEFINED")
-	values.Set("gridlines", "false")
-	values.Set("fzr", "false")
-	values.Set("fitw", "true")
-	values.Set("top_margin", "0")
-	values.Set("bottom_margin", "0")
-	values.Set("left_margin", "0")
-	values.Set("right_margin", "0")
-	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?%s", url.PathEscape(strings.TrimSpace(sheetID)), values.Encode())
+	return values
+}
+
+func buildPDFExportURLCandidates(sheetID string, valuesList ...url.Values) []string {
+	escapedSheetID := url.PathEscape(strings.TrimSpace(sheetID))
+	if escapedSheetID == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(valuesList))
+	urls := make([]string, 0, len(valuesList))
+	for _, values := range valuesList {
+		if values == nil {
+			continue
+		}
+		u := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?%s", escapedSheetID, values.Encode())
+		if _, exists := seen[u]; exists {
+			continue
+		}
+		seen[u] = struct{}{}
+		urls = append(urls, u)
+	}
+	return urls
 }
 
 func newGoogleAuthenticatedHTTPClient(ctx context.Context, cfg workflowConfig) (*http.Client, error) {

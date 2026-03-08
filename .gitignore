@@ -8,6 +8,7 @@ secrets/
 *.key
 *.p12
 /google-credentials.json
+/service-account.json
 
 # Runtime data and logs
 data/*.json
