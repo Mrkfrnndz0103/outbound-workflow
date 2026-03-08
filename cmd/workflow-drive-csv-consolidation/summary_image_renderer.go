@@ -130,6 +130,9 @@ const (
 	summaryPDFExportRetryMax    = 8
 	summaryPDFExportRetryBase   = 2 * time.Second
 	summaryPDFExportRetryMaxDur = 30 * time.Second
+	summaryPDFStageRetryMax     = 3
+	summaryPDFStageRetryBase    = 8 * time.Second
+	summaryPDFStageRetryMaxDur  = 45 * time.Second
 	summarySyncPollInterval     = 1 * time.Second
 	summarySyncMaxWait          = 30 * time.Second
 )
@@ -712,17 +715,25 @@ func renderRangeViaPDFPNG(
 	if err != nil {
 		return nil, err
 	}
-	rangeExportURLs := buildSheetsPDFExportURLCandidates(sheetID, sheetGID, captureRange)
-	pdfRaw, err := exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, rangeExportURLs)
-	if err != nil {
-		if !isRetryablePDFExportFailure(err) {
+
+	var (
+		pdfRaw []byte
+	)
+	stageDelay := summaryPDFStageRetryBase
+	for stage := 1; stage <= summaryPDFStageRetryMax; stage++ {
+		pdfRaw, err = exportRangePDFWithFullTabFallback(ctx, exportHTTPClient, sheetID, sheetGID, captureRange)
+		if err == nil {
+			break
+		}
+		if !isRetryablePDFExportFailure(err) || stage == summaryPDFStageRetryMax {
 			return nil, err
 		}
-		fullTabExportURL := buildSheetsPDFExportURLWithoutRangeCandidates(sheetID, sheetGID)
-		var fallbackErr error
-		pdfRaw, fallbackErr = exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, fullTabExportURL)
-		if fallbackErr != nil {
-			return nil, fmt.Errorf("sheets export pdf failed for range and full-tab fallback: range_err=%v fallback_err=%w", err, fallbackErr)
+		if waitErr := waitWithContext(ctx, stageDelay); waitErr != nil {
+			return nil, waitErr
+		}
+		stageDelay *= 2
+		if stageDelay > summaryPDFStageRetryMaxDur {
+			stageDelay = summaryPDFStageRetryMaxDur
 		}
 	}
 
@@ -731,6 +742,30 @@ func renderRangeViaPDFPNG(
 		return nil, err
 	}
 	return pngRaw, nil
+}
+
+func exportRangePDFWithFullTabFallback(
+	ctx context.Context,
+	exportHTTPClient *http.Client,
+	sheetID string,
+	sheetGID int64,
+	captureRange string,
+) ([]byte, error) {
+	rangeExportURLs := buildSheetsPDFExportURLCandidates(sheetID, sheetGID, captureRange)
+	pdfRaw, err := exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, rangeExportURLs)
+	if err == nil {
+		return pdfRaw, nil
+	}
+	if !isRetryablePDFExportFailure(err) {
+		return nil, err
+	}
+
+	fullTabExportURLs := buildSheetsPDFExportURLWithoutRangeCandidates(sheetID, sheetGID)
+	pdfRaw, fallbackErr := exportSheetsPDFViaCandidateURLs(ctx, exportHTTPClient, fullTabExportURLs)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("sheets export pdf failed for range and full-tab fallback: range_err=%v fallback_err=%w", err, fallbackErr)
+	}
+	return pdfRaw, nil
 }
 
 func exportSheetsPDFViaCandidateURLs(ctx context.Context, exportHTTPClient *http.Client, urls []string) ([]byte, error) {
