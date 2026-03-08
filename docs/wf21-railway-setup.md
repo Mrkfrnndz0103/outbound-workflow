@@ -40,6 +40,7 @@ Prepare these before opening Railway UI.
 - `WF21_SEATALK_APP_ID` (bot mode)
 - `WF21_SEATALK_APP_SECRET` (bot mode)
 - `WF21_SEATALK_GROUP_ID` (bot mode)
+- `WF21_SEATALK_GROUP_IDS` (bot mode, optional multi-group list)
 - `WF21_SEATALK_WEBHOOK_URL` (webhook mode only)
 
 ### 2.2 Required non-secret values
@@ -162,6 +163,8 @@ WF21_R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
 WF21_SEATALK_APP_ID=<seatalk-app-id>
 WF21_SEATALK_APP_SECRET=<seatalk-app-secret>
 WF21_SEATALK_GROUP_ID=<seatalk-group-id>
+# Optional multi-group send in bot mode (comma/newline/semicolon separated)
+WF21_SEATALK_GROUP_IDS=
 ```
 
 ### 4.2 Core runtime baseline
@@ -201,6 +204,14 @@ WF21_USE_BOT_CONFIG=false
 WF21_SUMMARY_SEATALK_MODE=bot
 WF21_SEATALK_BASE_URL=https://openapi.seatalk.io
 ```
+
+To send to multiple groups in bot mode, set:
+
+```dotenv
+WF21_SEATALK_GROUP_IDS=<group-id-1>,<group-id-2>
+```
+
+`WF21_SEATALK_GROUP_ID` remains supported for single-group mode/backward compatibility.
 
 ### 4.4 Summary render profile (`pdf_png`)
 

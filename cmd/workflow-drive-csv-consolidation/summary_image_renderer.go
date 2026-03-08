@@ -307,29 +307,48 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		BaseURL:   cfg.SummarySeaTalkBaseURL,
 		Timeout:   cfg.SummarySendHTTPTimeout,
 	})
-	if err = sendSummaryWithRetry(ctx, "send summary caption to seatalk bot", func() error {
-		return sender.SendTextToGroup(ctx, cfg.SummarySeaTalkGroupID, buildSummaryCaptionForBot(captionTS), 1)
-	}); err != nil {
-		return result, fmt.Errorf("send summary caption to seatalk bot: %w", err)
+	targetGroups := cfg.SummarySeaTalkGroupIDs
+	if len(targetGroups) == 0 && strings.TrimSpace(cfg.SummarySeaTalkGroupID) != "" {
+		targetGroups = []string{strings.TrimSpace(cfg.SummarySeaTalkGroupID)}
 	}
-	for _, img := range images {
-		if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
-			return result, err
-		}
-		if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot", img.Label), func() error {
-			return sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data)
-		}); err != nil {
-			return result, fmt.Errorf("send %s summary image to seatalk bot: %w", img.Label, err)
-		}
+	if len(targetGroups) == 0 {
+		return result, errors.New("no SeaTalk target groups configured for bot mode")
 	}
-	for _, img := range extraImages {
-		if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
-			return result, err
+
+	for groupIdx, groupID := range targetGroups {
+		gid := strings.TrimSpace(groupID)
+		if gid == "" {
+			continue
 		}
-		if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot", img.Label), func() error {
-			return sender.SendImageToGroupBase64(ctx, cfg.SummarySeaTalkGroupID, img.Base64Data)
+		if groupIdx > 0 {
+			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+				return result, err
+			}
+		}
+		if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send summary caption to seatalk bot group=%s", gid), func() error {
+			return sender.SendTextToGroup(ctx, gid, buildSummaryCaptionForBot(captionTS), 1)
 		}); err != nil {
-			break
+			return result, fmt.Errorf("send summary caption to seatalk bot group=%s: %w", gid, err)
+		}
+		for _, img := range images {
+			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+				return result, err
+			}
+			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot group=%s", img.Label, gid), func() error {
+				return sender.SendImageToGroupBase64(ctx, gid, img.Base64Data)
+			}); err != nil {
+				return result, fmt.Errorf("send %s summary image to seatalk bot group=%s: %w", img.Label, gid, err)
+			}
+		}
+		for _, img := range extraImages {
+			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+				return result, err
+			}
+			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot group=%s", img.Label, gid), func() error {
+				return sender.SendImageToGroupBase64(ctx, gid, img.Base64Data)
+			}); err != nil {
+				break
+			}
 		}
 	}
 	return result, nil

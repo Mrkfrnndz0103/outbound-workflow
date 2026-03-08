@@ -131,6 +131,7 @@ type workflowConfig struct {
 	SummarySeaTalkSecret   string
 	SummarySeaTalkBaseURL  string
 	SummarySeaTalkGroupID  string
+	SummarySeaTalkGroupIDs []string
 	SummarySheetID         string
 	SummaryTab             string
 	SummaryRange           string
@@ -290,10 +291,11 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s target_source=%s target_group=%s sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
+			"summary snapshot enabled mode=%s target_source=%s target_group=%s target_groups=%q sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummaryTargetSource,
 			cfg.SummarySeaTalkGroupID,
+			strings.Join(cfg.SummarySeaTalkGroupIDs, ","),
 			cfg.SummarySheetID,
 			cfg.SummaryTab,
 			cfg.SummaryRange,
@@ -895,6 +897,13 @@ func loadConfig() (workflowConfig, error) {
 		os.Getenv("WF21_SEATALK_GROUP_ID"),
 		os.Getenv("WF2_SEATALK_GROUP_ID"),
 	))
+	summarySeaTalkGroupIDs := parseSeaTalkGroupIDs(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("WF21_SEATALK_GROUP_IDS"),
+		os.Getenv("WF2_SEATALK_GROUP_IDS"),
+	)))
+	if len(summarySeaTalkGroupIDs) == 0 {
+		summarySeaTalkGroupIDs = parseSeaTalkGroupIDs(summarySeaTalkGroupID)
+	}
 	summaryWebhookURL := strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SEATALK_WEBHOOK_URL"),
 		os.Getenv("SEATALK_SYSTEM_WEBHOOK_URL"),
@@ -919,10 +928,14 @@ func loadConfig() (workflowConfig, error) {
 		}
 		summarySeaTalkMode = row.Mode
 		summarySeaTalkGroupID = row.TargetGroup
+		summarySeaTalkGroupIDs = parseSeaTalkGroupIDs(row.TargetGroup)
 		summarySeaTalkAppID = row.AppID
 		summarySeaTalkSecret = row.AppSecret
 		summaryWebhookURL = row.WebhookURL
 		summaryTargetSource = "bot_config"
+	}
+	if len(summarySeaTalkGroupIDs) > 0 {
+		summarySeaTalkGroupID = summarySeaTalkGroupIDs[0]
 	}
 	summaryTimezone := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_TIMEZONE")),
@@ -996,6 +1009,7 @@ func loadConfig() (workflowConfig, error) {
 		SummarySeaTalkSecret:        summarySeaTalkSecret,
 		SummarySeaTalkBaseURL:       summarySeaTalkBaseURL,
 		SummarySeaTalkGroupID:       summarySeaTalkGroupID,
+		SummarySeaTalkGroupIDs:      summarySeaTalkGroupIDs,
 		SummarySheetID: firstNonEmpty(
 			strings.TrimSpace(os.Getenv("WF21_SUMMARY_SHEET_ID")),
 			firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_DESTINATION_SHEET_ID")), defaultDestinationSheetID),
@@ -1078,8 +1092,8 @@ func loadConfig() (workflowConfig, error) {
 			if cfg.SummarySeaTalkAppID == "" || cfg.SummarySeaTalkSecret == "" {
 				return workflowConfig{}, errors.New("WF21_SEATALK_APP_ID/WF21_SEATALK_APP_SECRET (or WF2_/SEATALK_ fallbacks) are required when WF21_SUMMARY_SEATALK_MODE=bot")
 			}
-			if cfg.SummarySeaTalkGroupID == "" {
-				return workflowConfig{}, errors.New("WF21_SEATALK_GROUP_ID (or WF2_SEATALK_GROUP_ID fallback) is required when WF21_SUMMARY_SEATALK_MODE=bot")
+			if len(cfg.SummarySeaTalkGroupIDs) == 0 {
+				return workflowConfig{}, errors.New("WF21_SEATALK_GROUP_ID/WF21_SEATALK_GROUP_IDS (or WF2_SEATALK_GROUP_ID/WF2_SEATALK_GROUP_IDS fallback) is required when WF21_SUMMARY_SEATALK_MODE=bot")
 			}
 		}
 		if cfg.SummarySeaTalkMode == "webhook" && cfg.SummaryWebhookURL == "" {
@@ -1136,6 +1150,30 @@ func loadConfig() (workflowConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func parseSeaTalkGroupIDs(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	normalized := strings.NewReplacer("\r", ",", "\n", ",", ";", ",").Replace(trimmed)
+	parts := strings.Split(normalized, ",")
+	seen := make(map[string]struct{}, len(parts))
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		token := strings.TrimSpace(part)
+		if token == "" {
+			continue
+		}
+		if _, exists := seen[token]; exists {
+			continue
+		}
+		seen[token] = struct{}{}
+		out = append(out, token)
+	}
+	return out
 }
 
 func parseSummaryRangeList(raw string) ([]string, error) {

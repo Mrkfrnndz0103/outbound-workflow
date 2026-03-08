@@ -518,6 +518,21 @@ func TestParseSummaryRangeListWithOptionalTabPrefix(t *testing.T) {
 	}
 }
 
+func TestParseSeaTalkGroupIDs(t *testing.T) {
+	parsed := parseSeaTalkGroupIDs("group-a, group-b;group-c\ngroup-b\r\ngroup-a")
+	if len(parsed) != 3 {
+		t.Fatalf("expected 3 groups, got %d (%#v)", len(parsed), parsed)
+	}
+	if parsed[0] != "group-a" || parsed[1] != "group-b" || parsed[2] != "group-c" {
+		t.Fatalf("unexpected parsed groups: %#v", parsed)
+	}
+
+	empty := parseSeaTalkGroupIDs(" \n\t ")
+	if len(empty) != 0 {
+		t.Fatalf("expected empty result for blank input, got %#v", empty)
+	}
+}
+
 func TestParseSummaryRangeListRejectsInvalidRange(t *testing.T) {
 	_, err := parseSummaryRangeList("A1")
 	if err == nil {
