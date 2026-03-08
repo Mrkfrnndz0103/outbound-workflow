@@ -102,7 +102,7 @@ Fallback if you are not using Railway config-as-code:
 2. Add variable:
 
 ```dotenv
-RAILWAY_DOCKERFILE_PATH=workflows/wf21-drive-csv-consolidation/Dockerfile.render
+   RAILWAY_DOCKERFILE_PATH=workflows/wf21-drive-csv-consolidation/Dockerfile.render
 ```
 
 ### 3.3 Configure deploy healthcheck
