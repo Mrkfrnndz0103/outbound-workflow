@@ -9,7 +9,7 @@ This guide deploys **WF2.1 only** (`workflows/wf21-drive-csv-consolidation/cmd`)
 - persistent WF2.1 state/status files via Railway Volume
 - external uptime checks via **UptimeRobot every 5 minutes**
 
-This guide assumes WF3 is removed and not deployed.
+This guide assumes WF3, if used, is deployed as a separate Railway service and not bundled into the WF2.1 service.
 
 ## 1. Deployment Model (Railway)
 

@@ -10,3 +10,7 @@ Each workflow now lives in its own folder under `workflows/` so code, tests, and
   - Entrypoint: `./workflows/wf21-drive-csv-consolidation/cmd`
   - Dockerfile: `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
   - Docs: `workflows/wf21-drive-csv-consolidation/docs/`
+- `wf3-mdt-updates`
+  - Entrypoint: `./workflows/wf3-mdt-updates/cmd`
+  - Dockerfile: `workflows/wf3-mdt-updates/Dockerfile.render`
+  - Docs: `workflows/wf3-mdt-updates/README.md`

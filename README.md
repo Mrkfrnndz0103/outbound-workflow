@@ -443,13 +443,25 @@ $env:WF21_CONTINUOUS = "false"
 go run ./workflows/wf21-drive-csv-consolidation/cmd
 ```
 
-## Render deployment (24/7)
+## Deployment Platforms
 
-Use the included `render.yaml` blueprint to deploy as a web service.
+Recommended split for this repo:
 
-Note:
-- `go-bot-workflow-drive-csv-consolidation` is configured with `runtime: docker` and uses `workflows/wf21-drive-csv-consolidation/Dockerfile.render`, which installs `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`.
-- `go-bot-sync-bot-config-groups` is configured as a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
+- Render:
+  - `go-bot-seatalk-bot`
+  - `go-bot-workflow-mm-lh-provided` (`wf1`)
+  - `go-bot-sync-bot-config-groups` cron
+- Railway:
+  - `wf2.1` (`workflows/wf21-drive-csv-consolidation/cmd`)
+  - `wf3` (`workflows/wf3-mdt-updates/cmd`)
+
+### Render (bot + wf1)
+
+Use the included `render.yaml` blueprint for the Render-managed services only.
+
+Notes:
+- `render.yaml` is no longer the deployment source of truth for `wf2.1`.
+- `go-bot-sync-bot-config-groups` remains a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.
 2. In Render, create a new Blueprint and select the repo.
@@ -458,6 +470,11 @@ Note:
    - `WF1_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
 4. After first deploy, set:
    - `WF1_SELF_PING_URL=https://<your-render-service>.onrender.com/healthz`
+
+### Railway (wf2.1 + wf3)
+
+- `wf2.1` guide: `workflows/wf21-drive-csv-consolidation/docs/railway-setup.md`
+- `wf3` guide: `docs/wf3-fly-cloudflare-railway-setup.md`
 
 ### Render env reference file
 

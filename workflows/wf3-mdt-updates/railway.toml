@@ -1,0 +1,15 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "workflows/wf3-mdt-updates/Dockerfile.render"
+watchPatterns = [
+  "workflows/wf3-mdt-updates/**",
+  "internal/**",
+  "go.mod",
+  "go.sum",
+]
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ALWAYS"
+
