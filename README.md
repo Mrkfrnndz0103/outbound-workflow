@@ -390,6 +390,8 @@ Optional env:
 - `WF21_R2_OBJECT_PREFIX` (default `wf2-1`)
 - `WF21_STATE_FILE`
 - `WF21_STATUS_FILE` (set `none` to disable)
+- `WF21_LOCK_FILE` (recommended for scheduled/serverless deployment)
+- `WF21_LOCK_STALE_AFTER_SECONDS`
 - `WF21_BOOTSTRAP_PROCESS_EXISTING` (default `true`)
 - `WF21_DROP_LEADING_UNNAMED_COLUMN` (default `true`)
 - `WF21_DRY_RUN` (default `false`)
@@ -450,17 +452,20 @@ Recommended split for this repo:
 - Render:
   - `go-bot-seatalk-bot`
   - `go-bot-workflow-mm-lh-provided` (`wf1`)
+  - `go-bot-workflow3-mdt-updates` (`wf3`)
   - `go-bot-sync-bot-config-groups` cron
 - Railway:
   - `wf2.1` (`workflows/wf21-drive-csv-consolidation/cmd`)
-  - `wf3` (`workflows/wf3-mdt-updates/cmd`)
 
-### Render (bot + wf1)
+### Render (bot + wf1 + wf3)
 
-Use the included `render.yaml` blueprint for the Render-managed services only.
+Use the included `render.yaml` blueprint for the Render-managed services.
 
 Notes:
-- `render.yaml` is no longer the deployment source of truth for `wf2.1`.
+- `wf3` runs as a dedicated Docker web service because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
+- `wf3` uses a persistent disk mounted at `/var/data` for its state/status files.
+- `wf2.1` runs on Railway because `WF21_SUMMARY_RENDER_MODE=pdf_png` depends on Poppler/ImageMagick in the WF21 Docker image.
+- `render.yaml` is not the deployment source of truth for `wf2.1`.
 - `go-bot-sync-bot-config-groups` remains a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.
@@ -468,13 +473,21 @@ Notes:
 3. Set secret env vars in Render:
    - `SEATALK_SYSTEM_WEBHOOK_URL`
    - `WF1_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
+   - `WF3_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
+   - `WF3_SEATALK_APP_ID`
+   - `WF3_SEATALK_APP_SECRET`
+   - `WF3_SEATALK_GROUP_ID`
 4. After first deploy, set:
    - `WF1_SELF_PING_URL=https://<your-render-service>.onrender.com/healthz`
 
-### Railway (wf2.1 + wf3)
+WF3 setup guide:
+- `docs/wf3-render-setup.md`
 
+### Railway
+
+- `wf2.1` config-as-code file: `workflows/wf21-drive-csv-consolidation/railway.toml`
 - `wf2.1` guide: `workflows/wf21-drive-csv-consolidation/docs/railway-setup.md`
-- `wf3` guide: `docs/wf3-fly-cloudflare-railway-setup.md`
+- `wf3` Railway config-as-code file: `workflows/wf3-mdt-updates/railway.toml`
 
 ### Render env reference file
 
@@ -490,12 +503,6 @@ go run ./scripts/generate_render_env_doc.go
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
 ```
-
-- Auto-update via Cloudflare Worker webhook:
-  - Worker project: `cloudflare/render-env-sync`
-  - Endpoint: `POST /github-webhook`
-  - It regenerates and commits `docs/render-env.md` when relevant files change.
-  - Setup guide: `cloudflare/render-env-sync/README.md`
 
 The service exposes:
 

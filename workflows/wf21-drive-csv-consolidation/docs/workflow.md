@@ -92,8 +92,10 @@ Imported output columns (in order):
 - `WF21_DESTINATION_TAB_PACKED_IN_ANOTHER_TO` (default `packed_in_another_to`)
 - `WF21_DESTINATION_TAB_NO_LHPACKING` (default `no_lhpacking`)
 - `WF21_R2_OBJECT_PREFIX` (default `wf2-1`)
-- `WF21_STATE_FILE` (default `data/workflow2-1-drive-csv-consolidation-state.json`)
-- `WF21_STATUS_FILE` (default `data/workflow2-1-drive-csv-consolidation-status.json`, set `none` to disable)
+- `WF21_STATE_FILE` (default `data/workflow2-1-drive-csv-consolidation-state.json`; also supports `r2://...` object keys in the configured R2 bucket)
+- `WF21_STATUS_FILE` (default `data/workflow2-1-drive-csv-consolidation-status.json`, set `none` to disable, also supports `r2://...`)
+- `WF21_LOCK_FILE` (optional advisory lock path; supports local path or `r2://...`)
+- `WF21_LOCK_STALE_AFTER_SECONDS` (default `1200`)
 - `WF21_BOOTSTRAP_PROCESS_EXISTING` (default `true`)
 - `WF21_DROP_LEADING_UNNAMED_COLUMN` (default `true`)
 - `WF21_DRY_RUN` (default `false`)
@@ -134,13 +136,14 @@ PDF mode dependency note:
   - Poppler (`pdftoppm` in PATH), or
   - ImageMagick (`magick` in PATH)
 
-## Render note for plans without worker service type
+## Railway note
 
-Use a `web` service with `healthCheckPath: /healthz`.
-This workflow now exposes:
+Railway is the recommended hosted path for WF2.1 when you need `WF21_SUMMARY_RENDER_MODE=pdf_png`.
 
-- `GET /healthz`
-- `GET /status` (returns `WF21_STATUS_FILE` JSON when enabled)
+- `workflows/wf21-drive-csv-consolidation/Dockerfile.render` installs Poppler (`pdftoppm`) and ImageMagick (`magick`).
+- `workflows/wf21-drive-csv-consolidation/railway.toml` pins Railway to that Dockerfile and `/healthz`.
+- Use a Railway volume mounted at `/data` for `WF21_STATE_FILE` and `WF21_STATUS_FILE`.
+- This workflow exposes `GET /healthz` and `GET /status` (when `WF21_STATUS_FILE` is enabled).
 
 ## Quick run examples
 

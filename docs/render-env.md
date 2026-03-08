@@ -101,6 +101,56 @@ powershell -ExecutionPolicy Bypass -File ./scripts/watch_render_env_doc.ps1
   - `SEATALK_APP_SECRET`
   - `SEATALK_BASE_URL`
 
+## go-bot-workflow3-mdt-updates
+
+- Build command: ``
+- Dockerfile: `workflows/wf3-mdt-updates/Dockerfile.render`
+- Docker context: `.`
+- Workflow source: `workflows/wf3-mdt-updates/cmd`
+
+### Render Vars (`render.yaml`)
+
+| Key | Management | Value |
+| --- | --- | --- |
+| `WF3_BOOTSTRAP_SEND_EXISTING` | `value` (managed) | `false` |
+| `WF3_CONTINUOUS` | `value` (managed) | `true` |
+| `WF3_DRY_RUN` | `value` (managed) | `false` |
+| `WF3_ENABLE_HEALTH_SERVER` | `value` (managed) | `true` |
+| `WF3_GOOGLE_CREDENTIALS_FILE` | `value` (managed) | `""` |
+| `WF3_GOOGLE_CREDENTIALS_JSON` | `sync: false` (unmanaged/secret) | - |
+| `WF3_HEALTH_PORT` | `value` (managed) | `""` |
+| `WF3_HTTP_TIMEOUT_SECONDS` | `value` (managed) | `90` |
+| `WF3_IMAGE1_FIXED_HIDE_ROWS` | `value` (managed) | `16-26,28,30,32-37,39-40` |
+| `WF3_IMAGE_MAX_BASE64_BYTES` | `value` (managed) | `5242880` |
+| `WF3_IMAGE_RANGES` | `value` (managed) | `mdt!B1:P42,mdt!B44:P108,mdt!B109:P166,mdt!B167:P196,mdt!B198:P231` |
+| `WF3_MONITOR_RANGE` | `value` (managed) | `G1:O227` |
+| `WF3_PDF_CONVERTER` | `value` (managed) | `pdftoppm` |
+| `WF3_PDF_DPI` | `value` (managed) | `180` |
+| `WF3_POLL_INTERVAL_SECONDS` | `value` (managed) | `3` |
+| `WF3_SEATALK_APP_ID` | `sync: false` (unmanaged/secret) | - |
+| `WF3_SEATALK_APP_SECRET` | `sync: false` (unmanaged/secret) | - |
+| `WF3_SEATALK_BASE_URL` | `value` (managed) | `https://openapi.seatalk.io` |
+| `WF3_SEATALK_GROUP_ID` | `sync: false` (unmanaged/secret) | - |
+| `WF3_SEND_DEBOUNCE_SECONDS` | `value` (managed) | `180` |
+| `WF3_SEND_MIN_INTERVAL_SECONDS` | `value` (managed) | `1` |
+| `WF3_SHEET_ID` | `value` (managed) | `1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc` |
+| `WF3_SHEET_TAB` | `value` (managed) | `mdt` |
+| `WF3_STABILITY_RUNS` | `value` (managed) | `3` |
+| `WF3_STABILITY_WAIT_SECONDS` | `value` (managed) | `2` |
+| `WF3_STATE_FILE` | `value` (managed) | `/var/data/workflow3-mdt-updates-state.json` |
+| `WF3_STATUS_FILE` | `value` (managed) | `/var/data/workflow3-mdt-updates-status.json` |
+| `WF3_TEMP_DIR` | `value` (managed) | `""` |
+| `WF3_TEST_SEND_ONCE` | `value` (managed) | `false` |
+| `WF3_TIMEZONE` | `value` (managed) | `Asia/Manila` |
+
+### Code Scan (Env Keys)
+
+- Detected keys (prefix-filtered for this service): `GOOGLE_APPLICATION_CREDENTIALS`, `PORT`, `SEATALK_APP_ID`, `SEATALK_APP_SECRET`, `SEATALK_BASE_URL`, `WF3_BOOTSTRAP_SEND_EXISTING`, `WF3_CONTINUOUS`, `WF3_DRY_RUN`, `WF3_ENABLE_HEALTH_SERVER`, `WF3_GOOGLE_CREDENTIALS_FILE`, `WF3_GOOGLE_CREDENTIALS_JSON`, `WF3_HEALTH_PORT`, `WF3_HTTP_TIMEOUT_SECONDS`, `WF3_IMAGE1_FIXED_HIDE_ROWS`, `WF3_IMAGE_MAX_BASE64_BYTES`, `WF3_IMAGE_RANGES`, `WF3_MONITOR_RANGE`, `WF3_PDF_CONVERTER`, `WF3_PDF_DPI`, `WF3_POLL_INTERVAL_SECONDS`, `WF3_SEATALK_APP_ID`, `WF3_SEATALK_APP_SECRET`, `WF3_SEATALK_BASE_URL`, `WF3_SEATALK_GROUP_ID`, `WF3_SEND_DEBOUNCE_SECONDS`, `WF3_SEND_MIN_INTERVAL_SECONDS`, `WF3_SHEET_ID`, `WF3_SHEET_TAB`, `WF3_STABILITY_RUNS`, `WF3_STABILITY_WAIT_SECONDS`, `WF3_STATE_FILE`, `WF3_STATUS_FILE`, `WF3_TEMP_DIR`, `WF3_TEST_SEND_ONCE`, `WF3_TIMEZONE`
+- Missing from `render.yaml`:
+  - `SEATALK_APP_ID`
+  - `SEATALK_APP_SECRET`
+  - `SEATALK_BASE_URL`
+
 ## go-bot-sync-bot-config-groups
 
 - Build command: `go build -o bin/bot-config-group-sync ./cmd/bot-config-group-sync`

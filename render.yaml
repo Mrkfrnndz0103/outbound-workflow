@@ -128,6 +128,80 @@ services:
       - key: WF1_SELF_PING_URL
         sync: false
 
+  - type: web
+    name: go-bot-workflow3-mdt-updates
+    runtime: docker
+    plan: starter
+    autoDeploy: false
+    healthCheckPath: /healthz
+    dockerfilePath: workflows/wf3-mdt-updates/Dockerfile.render
+    dockerContext: .
+    disk:
+      name: wf3-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: WF3_GOOGLE_CREDENTIALS_FILE
+        value: ""
+      - key: WF3_CONTINUOUS
+        value: "true"
+      - key: WF3_POLL_INTERVAL_SECONDS
+        value: "3"
+      - key: WF3_SEND_DEBOUNCE_SECONDS
+        value: "180"
+      - key: WF3_SEND_MIN_INTERVAL_SECONDS
+        value: "1"
+      - key: WF3_STABILITY_RUNS
+        value: "3"
+      - key: WF3_STABILITY_WAIT_SECONDS
+        value: "2"
+      - key: WF3_BOOTSTRAP_SEND_EXISTING
+        value: "false"
+      - key: WF3_DRY_RUN
+        value: "false"
+      - key: WF3_TEST_SEND_ONCE
+        value: "false"
+      - key: WF3_HTTP_TIMEOUT_SECONDS
+        value: "90"
+      - key: WF3_TIMEZONE
+        value: "Asia/Manila"
+      - key: WF3_PDF_DPI
+        value: "180"
+      - key: WF3_PDF_CONVERTER
+        value: "pdftoppm"
+      - key: WF3_IMAGE_MAX_BASE64_BYTES
+        value: "5242880"
+      - key: WF3_ENABLE_HEALTH_SERVER
+        value: "true"
+      - key: WF3_HEALTH_PORT
+        value: ""
+      - key: WF3_TEMP_DIR
+        value: ""
+      - key: WF3_SHEET_ID
+        value: 1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc
+      - key: WF3_SHEET_TAB
+        value: mdt
+      - key: WF3_MONITOR_RANGE
+        value: G1:O227
+      - key: WF3_IMAGE_RANGES
+        value: mdt!B1:P42,mdt!B44:P108,mdt!B109:P166,mdt!B167:P196,mdt!B198:P231
+      - key: WF3_IMAGE1_FIXED_HIDE_ROWS
+        value: 16-26,28,30,32-37,39-40
+      - key: WF3_SEATALK_BASE_URL
+        value: https://openapi.seatalk.io
+      - key: WF3_STATE_FILE
+        value: /var/data/workflow3-mdt-updates-state.json
+      - key: WF3_STATUS_FILE
+        value: /var/data/workflow3-mdt-updates-status.json
+      - key: WF3_GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WF3_SEATALK_APP_ID
+        sync: false
+      - key: WF3_SEATALK_APP_SECRET
+        sync: false
+      - key: WF3_SEATALK_GROUP_ID
+        sync: false
+
   - type: cron
     name: go-bot-sync-bot-config-groups
     runtime: go

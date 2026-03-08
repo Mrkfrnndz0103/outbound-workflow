@@ -16,11 +16,19 @@ Docker:
 - Use `workflows/wf3-mdt-updates/Dockerfile.render` when running `WF3_PDF_CONVERTER=auto|pdftoppm|magick`.
 - The image installs both Poppler (`pdftoppm`) and ImageMagick so PDF to PNG conversion is predictable in Linux deployments.
 
-Railway:
+Render:
+- Managed service name: `go-bot-workflow3-mdt-updates`
+- Blueprint file: `render.yaml`
+- Dockerfile: `workflows/wf3-mdt-updates/Dockerfile.render`
+- Persistent disk mount: `/var/data`
+- Set `WF3_STATE_FILE=/var/data/workflow3-mdt-updates-state.json`
+- Set `WF3_STATUS_FILE=/var/data/workflow3-mdt-updates-status.json`
+- Full UI runbook: `docs/wf3-render-setup.md`
+
+Railway fallback:
 - Config-as-code file: `workflows/wf3-mdt-updates/railway.toml`
 - Keep the Railway service rooted at the repo root, not `workflows/wf3-mdt-updates/`, because the Docker build needs `go.mod`, `go.sum`, and `internal/`.
 - In Railway service settings, point the config file path to `/workflows/wf3-mdt-updates/railway.toml`.
-- Full UI runbook: `docs/wf3-fly-cloudflare-railway-setup.md`
 
 Suggested runtime notes:
 - Prefer Docker for hosted deployment. PDF export plus conversion is the unstable part across environments.

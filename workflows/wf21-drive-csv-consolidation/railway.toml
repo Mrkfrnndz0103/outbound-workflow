@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "workflows/wf21-drive-csv-consolidation/Dockerfile.render"
+watchPatterns = [
+  "workflows/wf21-drive-csv-consolidation/**",
+  "internal/**",
+  "go.mod",
+  "go.sum",
+]
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ALWAYS"

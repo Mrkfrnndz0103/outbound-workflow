@@ -7,15 +7,17 @@ This guide deploys **WF2.1 only** (`workflows/wf21-drive-csv-consolidation/cmd`)
 - Cloudflare R2 upload
 - SeaTalk summary send
 - persistent WF2.1 state/status files via Railway Volume
+- Railway config-as-code via `workflows/wf21-drive-csv-consolidation/railway.toml`
 - external uptime checks via **UptimeRobot every 5 minutes**
 
-This guide assumes WF3, if used, is deployed as a separate Railway service and not bundled into the WF2.1 service.
+This guide assumes WF3, if used, is deployed as a separate service and not bundled into the WF2.1 service.
 
 ## 1. Deployment Model (Railway)
 
 WF2.1 is stateful and must persist local cursor/status files across redeploys.
 
 - Build from Dockerfile: `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
+- Prefer Railway config-as-code file: `workflows/wf21-drive-csv-consolidation/railway.toml`
 - Keep one running replica (single-writer state file model)
 - Attach volume at `/data`
 - Use Railway Healthcheck for deploy safety (`/healthz`)
@@ -80,9 +82,21 @@ UI path:
 
 If Railway creates multiple services, keep only the WF2.1 service for this runbook.
 
-### 3.2 Force Railway to use WF2.1 Dockerfile
+### 3.2 Point Railway to the WF2.1 config file
 
-UI path:
+Preferred path:
+
+1. Open the service in Railway.
+2. Open `Settings`.
+3. Set the service config file path to:
+
+```text
+/workflows/wf21-drive-csv-consolidation/railway.toml
+```
+
+The repo must stay rooted at the repo root, not `workflows/wf21-drive-csv-consolidation/`, because the Docker build needs `go.mod`, `go.sum`, and `internal/`.
+
+Fallback if you are not using Railway config-as-code:
 
 1. Open service -> `Variables`
 2. Add variable:
@@ -91,15 +105,15 @@ UI path:
 RAILWAY_DOCKERFILE_PATH=workflows/wf21-drive-csv-consolidation/Dockerfile.render
 ```
 
-This is required because the Dockerfile is not at repo root.
-
 ### 3.3 Configure deploy healthcheck
 
-UI path:
+If you use `workflows/wf21-drive-csv-consolidation/railway.toml`, Railway already receives `/healthz` as the healthcheck path.
+
+UI path to confirm:
 
 1. Open service -> `Settings`
 2. `Deploy` section -> `Healthcheck Path`
-3. Set:
+3. Confirm:
    - Healthcheck Path: `/healthz`
 
 App settings:
@@ -498,7 +512,7 @@ Check:
 
 ### 9.2 Deploy is healthy but later app goes down
 
-Expected possibility: Railway healthcheck is deploy-time only.  
+Expected possibility: Railway healthcheck is deploy-time only.
 Fix: use UptimeRobot monitor + alerting.
 
 ### 9.3 State resets after redeploy
@@ -530,7 +544,9 @@ Webhook mode:
 
 If you see converter availability errors:
 
-- confirm Dockerfile path variable points to `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
+- confirm Railway is using `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
+- if using config-as-code, confirm the service points to `/workflows/wf21-drive-csv-consolidation/railway.toml`
+- if not using config-as-code, confirm `RAILWAY_DOCKERFILE_PATH=workflows/wf21-drive-csv-consolidation/Dockerfile.render`
 - keep `WF21_SUMMARY_PDF_CONVERTER=pdftoppm` or `auto`
 
 ## 10. References
@@ -551,4 +567,3 @@ If you see converter availability errors:
   https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/
 - UptimeRobot monitor creation: https://help.uptimerobot.com/en/articles/11358364-how-to-create-your-first-monitor-on-uptimerobot-quick-setup-guide
 - UptimeRobot monitoring interval: https://help.uptimerobot.com/en/articles/11360876-what-is-a-monitoring-interval-in-uptimerobot
-
