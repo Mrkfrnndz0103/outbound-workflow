@@ -33,8 +33,8 @@ type envVar struct {
 
 var (
 	envKeyRe     = regexp.MustCompile(`\b(?:WF\d+_[A-Z0-9_]+|SEATALK_[A-Z0-9_]+|GOOGLE_APPLICATION_CREDENTIALS|PORT)\b`)
-	cmdDirRe     = regexp.MustCompile(`\./cmd/([a-zA-Z0-9\-_]+)`)
-	dockerDirRe  = regexp.MustCompile(`(?:^|[/\\])cmd[/\\]([a-zA-Z0-9\-_]+)(?:[/\\]|$)`)
+	workflowRoot = regexp.MustCompile(`(?:^|/)(workflows/[a-zA-Z0-9\-_]+)(?:/|$)`)
+	legacyCmdDir = regexp.MustCompile(`(?:^|/)(cmd/[a-zA-Z0-9\-_]+)(?:/|$)`)
 	prefixKeyRe  = regexp.MustCompile(`^(WF\d+)_`)
 	sharedKeySet = map[string]struct{}{
 		"SEATALK_SYSTEM_WEBHOOK_URL":     {},
@@ -180,14 +180,26 @@ func run() error {
 }
 
 func inferCmdDir(s service) string {
-	m := cmdDirRe.FindStringSubmatch(s.BuildCommand)
-	if len(m) >= 2 {
-		return filepath.ToSlash(filepath.Join("cmd", m[1]))
+	for _, token := range strings.Fields(s.BuildCommand) {
+		cleaned := strings.Trim(token, "'\"`")
+		if strings.HasPrefix(cleaned, "./") {
+			return filepath.ToSlash(strings.TrimPrefix(cleaned, "./"))
+		}
 	}
-	dm := dockerDirRe.FindStringSubmatch(strings.TrimSpace(s.Dockerfile))
-	if len(dm) >= 2 {
-		return filepath.ToSlash(filepath.Join("cmd", dm[1]))
+
+	dockerfile := filepath.ToSlash(strings.TrimSpace(s.Dockerfile))
+	if dockerfile == "" {
+		return ""
 	}
+
+	if m := workflowRoot.FindStringSubmatch(dockerfile); len(m) >= 2 {
+		return filepath.ToSlash(filepath.Join(m[1], "cmd"))
+	}
+
+	if m := legacyCmdDir.FindStringSubmatch(dockerfile); len(m) >= 2 {
+		return filepath.ToSlash(m[1])
+	}
+
 	return ""
 }
 

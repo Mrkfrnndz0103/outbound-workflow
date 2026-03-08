@@ -36,7 +36,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/workflow ./cmd/workflow-drive-csv-consolidation
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/workflow ./workflows/wf21-drive-csv-consolidation/cmd
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -222,3 +222,4 @@ If state is not persisted:
 If secrets fail:
 - Confirm secret names and versions.
 - Confirm runtime SA has `Secret Manager Secret Accessor`.
+

@@ -53,7 +53,7 @@ services:
     plan: free
     autoDeploy: false
     healthCheckPath: /healthz
-    buildCommand: go build -o bin/workflow-mm-lh-provided ./cmd/workflow-mm-lh-provided
+    buildCommand: go build -o bin/workflow-mm-lh-provided ./workflows/wf1-mm-lh-provided/cmd
     startCommand: ./bin/workflow-mm-lh-provided
     envVars:
       - key: WF1_GOOGLE_CREDENTIALS_FILE
@@ -135,7 +135,7 @@ services:
     plan: free
     autoDeploy: false
     healthCheckPath: /healthz
-    dockerfilePath: cmd/workflow-drive-csv-consolidation/Dockerfile.render
+    dockerfilePath: workflows/wf21-drive-csv-consolidation/Dockerfile.render
     dockerContext: .
     
     envVars:

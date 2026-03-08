@@ -1,0 +1,69 @@
+name: Railway Env Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".env.example"
+      - "scripts/sync_railway_env.ps1"
+      - ".github/workflows/railway-env-sync.yml"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Validate required secrets
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+        run: |
+          : "${RAILWAY_TOKEN:?Missing GitHub secret RAILWAY_TOKEN}"
+          : "${RAILWAY_PROJECT_ID:?Missing GitHub secret RAILWAY_PROJECT_ID}"
+          : "${RAILWAY_ENVIRONMENT_ID:?Missing GitHub secret RAILWAY_ENVIRONMENT_ID}"
+          : "${RAILWAY_SERVICE_ID:?Missing GitHub secret RAILWAY_SERVICE_ID}"
+
+      - name: Link Railway project
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+        run: |
+          railway link \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID"
+
+      - name: Sync env vars from .env.example
+        shell: pwsh
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_ENV_PREFIX: ${{ vars.RAILWAY_ENV_PREFIX }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RAILWAY_ENV_PREFIX)) {
+            ./scripts/sync_railway_env.ps1 `
+              -EnvFile .env.example `
+              -ChunkSize 500 `
+              -NoSkipDeploys
+          } else {
+            ./scripts/sync_railway_env.ps1 `
+              -EnvFile .env.example `
+              -ChunkSize 500 `
+              -NoSkipDeploys `
+              -Prefix $env:RAILWAY_ENV_PREFIX
+          }

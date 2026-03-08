@@ -74,6 +74,12 @@ const (
 	defaultSummaryHTTPTimeout     = 45 * time.Second
 	defaultSummaryTimezone        = "Asia/Manila"
 	defaultSummarySyncCell        = "config!B1"
+
+	defaultNewRelicLogAPIURL     = "https://log-api.newrelic.com/log/v1"
+	defaultNewRelicLogsBatchSize = 50
+	defaultNewRelicLogsBatchWait = 2 * time.Second
+	defaultNewRelicLogsQueueSize = 1000
+	defaultNewRelicLogsTimeout   = 8 * time.Second
 )
 
 var selectedOutputHeaders = []string{
@@ -123,6 +129,17 @@ type workflowConfig struct {
 
 	EnableHealthServer bool
 	HealthListenAddr   string
+
+	NewRelicLogsEnabled   bool
+	NewRelicLogAPIURL     string
+	NewRelicLicenseKey    string
+	NewRelicSource        string
+	NewRelicService       string
+	NewRelicEnvironment   string
+	NewRelicLogsBatchSize int
+	NewRelicLogsBatchWait time.Duration
+	NewRelicLogsQueueSize int
+	NewRelicLogsTimeout   time.Duration
 
 	SummarySendEnabled     bool
 	SummarySeaTalkMode     string
@@ -244,6 +261,13 @@ func main() {
 	cfg, err := loadConfig()
 	if err != nil {
 		logger.Fatalf("config error: %v", err)
+	}
+	logger, closeLogger, err := newWorkflowLogger(cfg)
+	if err != nil {
+		logger.Fatalf("logger init error: %v", err)
+	}
+	if closeLogger != nil {
+		defer closeLogger()
 	}
 	if identityHint, hintErr := googleCredentialsIdentityHint(cfg); hintErr != nil {
 		logger.Printf("google credentials identity hint unavailable err=%v", hintErr)
@@ -845,6 +869,10 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
+	newRelicLogsEnabled, err := getBoolEnv("WF21_NEWRELIC_LOGS_ENABLED", false)
+	if err != nil {
+		return workflowConfig{}, err
+	}
 	summarySeaTalkMode := strings.ToLower(strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SUMMARY_SEATALK_MODE"),
 		"bot",
@@ -879,6 +907,19 @@ func loadConfig() (workflowConfig, error) {
 		strings.TrimSpace(os.Getenv("WF21_HEALTH_PORT")),
 		strings.TrimSpace(os.Getenv("PORT")),
 		"8080",
+	)
+	newRelicLogAPIURL := strings.TrimSpace(os.Getenv("WF21_NEWRELIC_LOG_API_URL"))
+	newRelicLicenseKey := strings.TrimSpace(os.Getenv("WF21_NEWRELIC_LICENSE_KEY"))
+	newRelicSource := firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_NEWRELIC_SOURCE")), workflowName)
+	newRelicService := firstNonEmpty(
+		strings.TrimSpace(os.Getenv("WF21_NEWRELIC_SERVICE")),
+		strings.TrimSpace(os.Getenv("RAILWAY_SERVICE_NAME")),
+		"wf21-drive-csv-consolidation",
+	)
+	newRelicEnvironment := firstNonEmpty(
+		strings.TrimSpace(os.Getenv("WF21_NEWRELIC_ENVIRONMENT")),
+		strings.TrimSpace(os.Getenv("RAILWAY_ENVIRONMENT_NAME")),
+		"railway",
 	)
 	summarySeaTalkAppID := strings.TrimSpace(firstNonEmpty(
 		os.Getenv("WF21_SEATALK_APP_ID"),
@@ -1004,6 +1045,16 @@ func loadConfig() (workflowConfig, error) {
 		StatusFile:                  statusFile,
 		EnableHealthServer:          enableHealthServer,
 		HealthListenAddr:            normalizeListenAddr(healthPort),
+		NewRelicLogsEnabled:         newRelicLogsEnabled,
+		NewRelicLogAPIURL:           newRelicLogAPIURL,
+		NewRelicLicenseKey:          newRelicLicenseKey,
+		NewRelicSource:              newRelicSource,
+		NewRelicService:             newRelicService,
+		NewRelicEnvironment:         newRelicEnvironment,
+		NewRelicLogsBatchSize:       getIntEnv("WF21_NEWRELIC_LOGS_BATCH_SIZE", defaultNewRelicLogsBatchSize),
+		NewRelicLogsBatchWait:       getDurationSeconds("WF21_NEWRELIC_LOGS_BATCH_WAIT_SECONDS", int(defaultNewRelicLogsBatchWait/time.Second)),
+		NewRelicLogsQueueSize:       getIntEnv("WF21_NEWRELIC_LOGS_QUEUE_SIZE", defaultNewRelicLogsQueueSize),
+		NewRelicLogsTimeout:         getDurationSeconds("WF21_NEWRELIC_LOGS_TIMEOUT_SECONDS", int(defaultNewRelicLogsTimeout/time.Second)),
 		SummarySendEnabled:          summarySendEnabled,
 		SummarySeaTalkMode:          summarySeaTalkMode,
 		SummaryTargetSource:         summaryTargetSource,
@@ -1071,6 +1122,49 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.SheetsWriteRetryMaxDelay > 60*time.Second {
 		cfg.SheetsWriteRetryMaxDelay = 60 * time.Second
+	}
+	if cfg.NewRelicLogsBatchSize < 1 {
+		cfg.NewRelicLogsBatchSize = defaultNewRelicLogsBatchSize
+	}
+	if cfg.NewRelicLogsBatchSize > 1000 {
+		cfg.NewRelicLogsBatchSize = 1000
+	}
+	if cfg.NewRelicLogsBatchWait < 500*time.Millisecond {
+		cfg.NewRelicLogsBatchWait = 500 * time.Millisecond
+	}
+	if cfg.NewRelicLogsBatchWait > 10*time.Second {
+		cfg.NewRelicLogsBatchWait = 10 * time.Second
+	}
+	if cfg.NewRelicLogsQueueSize < 100 {
+		cfg.NewRelicLogsQueueSize = 100
+	}
+	if cfg.NewRelicLogsQueueSize > 50000 {
+		cfg.NewRelicLogsQueueSize = 50000
+	}
+	if cfg.NewRelicLogsTimeout < 1*time.Second {
+		cfg.NewRelicLogsTimeout = defaultNewRelicLogsTimeout
+	}
+	if cfg.NewRelicLogsTimeout > 30*time.Second {
+		cfg.NewRelicLogsTimeout = 30 * time.Second
+	}
+	if cfg.NewRelicLogsEnabled {
+		if strings.TrimSpace(cfg.NewRelicLicenseKey) == "" {
+			return workflowConfig{}, errors.New("WF21_NEWRELIC_LICENSE_KEY is required when WF21_NEWRELIC_LOGS_ENABLED=true")
+		}
+		normalizedURL, normalizeErr := normalizeNewRelicLogAPIURL(cfg.NewRelicLogAPIURL)
+		if normalizeErr != nil {
+			return workflowConfig{}, normalizeErr
+		}
+		cfg.NewRelicLogAPIURL = normalizedURL
+		if strings.TrimSpace(cfg.NewRelicSource) == "" {
+			cfg.NewRelicSource = workflowName
+		}
+		if strings.TrimSpace(cfg.NewRelicService) == "" {
+			cfg.NewRelicService = "wf21-drive-csv-consolidation"
+		}
+		if strings.TrimSpace(cfg.NewRelicEnvironment) == "" {
+			cfg.NewRelicEnvironment = "railway"
+		}
 	}
 	if strings.TrimSpace(cfg.DestinationTabPendingRCV) == "" {
 		return workflowConfig{}, errors.New("WF21_DESTINATION_TAB_PENDING_RCV is required")

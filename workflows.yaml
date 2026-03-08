@@ -3,7 +3,7 @@ workflows:
     command: go
     args:
       - run
-      - ./cmd/workflow-mm-lh-provided
+      - ./workflows/wf1-mm-lh-provided/cmd
     timeout_seconds: 120
     allow_extra_args: false
 
@@ -12,7 +12,7 @@ workflows:
     command: go
     args:
       - run
-      - ./cmd/workflow-drive-csv-consolidation
+      - ./workflows/wf21-drive-csv-consolidation/cmd
     timeout_seconds: 900
     allow_extra_args: false
     env:

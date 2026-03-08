@@ -5,7 +5,7 @@ Workflow name: `workflow_2_1_drive_csv_consolidation`
 Command:
 
 ```powershell
-go run ./cmd/workflow-drive-csv-consolidation
+go run ./workflows/wf21-drive-csv-consolidation/cmd
 ```
 
 ## What it does
@@ -148,7 +148,7 @@ One-shot:
 
 ```powershell
 $env:WF21_CONTINUOUS = "false"
-go run ./cmd/workflow-drive-csv-consolidation
+go run ./workflows/wf21-drive-csv-consolidation/cmd
 ```
 
 Watch mode:
@@ -156,5 +156,6 @@ Watch mode:
 ```powershell
 $env:WF21_CONTINUOUS = "true"
 $env:WF21_POLL_INTERVAL_SECONDS = "3"
-go run ./cmd/workflow-drive-csv-consolidation
+go run ./workflows/wf21-drive-csv-consolidation/cmd
 ```
+

@@ -1,6 +1,6 @@
 # WF2.1 Complete Railway Deployment Guide (Production + UI Runbook)
 
-This guide deploys **WF2.1 only** (`cmd/workflow-drive-csv-consolidation`) on Railway as a continuously running service, with:
+This guide deploys **WF2.1 only** (`workflows/wf21-drive-csv-consolidation/cmd`) on Railway as a continuously running service, with:
 
 - Google Drive ZIP polling
 - CSV consolidation + Google Sheets import
@@ -15,7 +15,7 @@ This guide assumes WF3 is removed and not deployed.
 
 WF2.1 is stateful and must persist local cursor/status files across redeploys.
 
-- Build from Dockerfile: `cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- Build from Dockerfile: `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
 - Keep one running replica (single-writer state file model)
 - Attach volume at `/data`
 - Use Railway Healthcheck for deploy safety (`/healthz`)
@@ -88,7 +88,7 @@ UI path:
 2. Add variable:
 
 ```dotenv
-RAILWAY_DOCKERFILE_PATH=cmd/workflow-drive-csv-consolidation/Dockerfile.render
+RAILWAY_DOCKERFILE_PATH=workflows/wf21-drive-csv-consolidation/Dockerfile.render
 ```
 
 This is required because the Dockerfile is not at repo root.
@@ -160,6 +160,7 @@ WF21_R2_ACCOUNT_ID=<r2-account-id>
 WF21_R2_BUCKET=<r2-bucket-name>
 WF21_R2_ACCESS_KEY_ID=<r2-access-key-id>
 WF21_R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
+WF21_NEWRELIC_LICENSE_KEY=<new-relic-license-key>
 WF21_SEATALK_APP_ID=<seatalk-app-id>
 WF21_SEATALK_APP_SECRET=<seatalk-app-secret>
 WF21_SEATALK_GROUP_ID=<seatalk-group-id>
@@ -245,7 +246,30 @@ WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES=5242880
 WF21_SUMMARY_HTTP_TIMEOUT_SECONDS=90
 ```
 
-### 4.5 Optional routing alternatives
+### 4.5 Optional New Relic Logs (`one.newrelic.com`)
+
+```dotenv
+WF21_NEWRELIC_LOGS_ENABLED=true
+# Leave empty to use default US endpoint: https://log-api.newrelic.com/log/v1
+# For EU account use: https://log-api.eu.newrelic.com/log/v1
+WF21_NEWRELIC_LOG_API_URL=https://log-api.newrelic.com/log/v1
+WF21_NEWRELIC_LICENSE_KEY=<new-relic-license-key>
+WF21_NEWRELIC_SOURCE=workflow_2_1_drive_csv_consolidation
+WF21_NEWRELIC_SERVICE=wf21-drive-csv-consolidation
+WF21_NEWRELIC_ENVIRONMENT=production
+WF21_NEWRELIC_LOGS_BATCH_SIZE=50
+WF21_NEWRELIC_LOGS_BATCH_WAIT_SECONDS=2
+WF21_NEWRELIC_LOGS_QUEUE_SIZE=1000
+WF21_NEWRELIC_LOGS_TIMEOUT_SECONDS=8
+```
+
+Notes:
+
+- App continues writing stdout logs even when New Relic shipping is enabled.
+- `WF21_NEWRELIC_LICENSE_KEY` is required when `WF21_NEWRELIC_LOGS_ENABLED=true`.
+- New Relic logs appear in `one.newrelic.com` under Logs.
+
+### 4.6 Optional routing alternatives
 
 Webhook mode:
 
@@ -262,6 +286,45 @@ BOT_CONFIG_SHEET_ID=<sheet-id>
 BOT_CONFIG_TAB=bot_config
 ```
 
+### 4.7 Auto-sync Railway vars from repo `.env.example` (optional)
+
+This repo includes:
+
+- Script: `scripts/sync_railway_env.ps1`
+- GitHub Action: `.github/workflows/railway-env-sync.yml`
+
+Behavior:
+
+- Syncs keys/values from `.env.example` to Railway using `railway variables set`
+- Runs automatically on push to `main` when `.env.example` changes
+- Skips empty values by default (prevents accidental secret wipe)
+- Applies updates/additions from repo edits; it does not delete removed keys
+
+Required GitHub repository secrets:
+
+- `RAILWAY_TOKEN`
+- `RAILWAY_PROJECT_ID`
+- `RAILWAY_ENVIRONMENT_ID`
+- `RAILWAY_SERVICE_ID`
+
+Optional GitHub repository variable:
+
+- `RAILWAY_ENV_PREFIX` (example: `WF21_`; when set, only matching keys are synced)
+
+Local manual run:
+
+```powershell
+npm i -g @railway/cli
+railway link --project <project-id> --environment <environment-id> --service <service-id>
+powershell -ExecutionPolicy Bypass -File ./scripts/sync_railway_env.ps1 -EnvFile .env.example -NoSkipDeploys
+```
+
+If you want empty values to be pushed too (not recommended for secrets):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/sync_railway_env.ps1 -EnvFile .env.example -IncludeEmpty -NoSkipDeploys
+```
+
 ## 5. Deploy on Railway
 
 UI path:
@@ -272,7 +335,7 @@ UI path:
 
 Confirm:
 
-- build uses `cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- build uses `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
 - deploy becomes healthy with `/healthz`
 - service enters `Active` state
 
@@ -292,6 +355,49 @@ Confirm:
 - Summary sync cell updates (`config!B1`)
 - SeaTalk receives caption + images
 - Status file under `/data` updates every cycle
+
+### 6.3 New Relic logs checks (if enabled)
+
+UI path:
+
+1. Open `https://one.newrelic.com`
+2. Select the correct account
+3. Go to `Logs`
+4. Open query/search bar and run:
+   - `workflow = "workflow_2_1_drive_csv_consolidation" AND service = "wf21-drive-csv-consolidation"`
+
+You should see startup lines, cycle activity, and any `cycle=<n> error=<...>` records.
+
+### 6.4 New Relic UI guide (dashboards + alerts)
+
+#### 6.4.1 Create a logs view (saved query)
+
+1. `one.newrelic.com` -> `Logs`
+2. Query:
+   - `workflow = "workflow_2_1_drive_csv_consolidation"`
+3. Set time window (for example `Last 30 minutes`)
+4. Save query to a view for operations team use
+
+#### 6.4.2 Create dashboard widgets
+
+1. `one.newrelic.com` -> `Dashboards` -> `Create a dashboard`
+2. Add chart -> query:
+   - `FROM Log SELECT count(*) WHERE workflow = 'workflow_2_1_drive_csv_consolidation' TIMESERIES 1 minute`
+3. Add error chart:
+   - `FROM Log SELECT count(*) WHERE workflow = 'workflow_2_1_drive_csv_consolidation' AND message LIKE '%error=%' TIMESERIES 1 minute`
+4. Save dashboard and share with the team
+
+#### 6.4.3 Create alert condition for WF2.1 errors
+
+1. `one.newrelic.com` -> `Alerts & AI` -> `Policies`
+2. Create or choose policy (for example `WF21-Production`)
+3. `Create condition` -> `NRQL`
+4. Use query:
+   - `FROM Log SELECT count(*) WHERE workflow = 'workflow_2_1_drive_csv_consolidation' AND message LIKE '%error=%'`
+5. Set threshold:
+   - Warning: `above 0` for `5 minutes`
+   - Critical: `above 0` for `10 minutes`
+6. Add notification channels (Slack/Email/PagerDuty) and enable the condition
 
 ## 7. UptimeRobot Setup (Ping Every 5 Minutes)
 
@@ -388,7 +494,7 @@ Webhook mode:
 
 If you see converter availability errors:
 
-- confirm Dockerfile path variable points to `cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- confirm Dockerfile path variable points to `workflows/wf21-drive-csv-consolidation/Dockerfile.render`
 - keep `WF21_SUMMARY_PDF_CONVERTER=pdftoppm` or `auto`
 
 ## 10. References
@@ -400,5 +506,13 @@ If you see converter availability errors:
 - Railway Public Networking: https://docs.railway.com/networking/public-networking
 - Railway Domains: https://docs.railway.com/networking/domains/working-with-domains
 - Railway Serverless (App Sleeping): https://docs.railway.com/deployments/serverless
+- Railway CLI Variables: https://docs.railway.com/develop/cli#variables
+- New Relic logs in context:
+  https://docs.newrelic.com/docs/logs/get-started/get-started-log-management/
+- New Relic log API:
+  https://docs.newrelic.com/docs/logs/log-api/introduction-log-api/
+- New Relic API keys:
+  https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/
 - UptimeRobot monitor creation: https://help.uptimerobot.com/en/articles/11358364-how-to-create-your-first-monitor-on-uptimerobot-quick-setup-guide
 - UptimeRobot monitoring interval: https://help.uptimerobot.com/en/articles/11360876-what-is-a-monitoring-interval-in-uptimerobot
+

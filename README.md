@@ -9,6 +9,11 @@ This project supports two modes:
 
 ```text
 cmd/seatalk-bot/main.go        # app entrypoint
+cmd/bot-config-group-sync/     # bot_config inventory sync command
+workflows/wf1-mm-lh-provided/  # workflow 1 isolated files
+workflows/wf2-ob-pending-dispatch/ # workflow 2 isolated files
+workflows/wf21-drive-csv-consolidation/ # workflow 2.1 isolated files + docker/docs
+workflows/README.md             # workflow folder map + entrypoints
 internal/bot/                  # callback handling and command routing (bot mode)
 internal/systemaccount/        # outbound send APIs (system_account mode)
 internal/seatalk/              # SeaTalk clients/models
@@ -233,7 +238,7 @@ For fast trigger behavior when column `F` is formula-driven, run in watch mode:
 ```powershell
 $env:WF1_CONTINUOUS = "true"
 $env:WF1_POLL_INTERVAL_SECONDS = "1"
-go run ./cmd/workflow-mm-lh-provided
+go run ./workflows/wf1-mm-lh-provided/cmd
 ```
 
 Send rule:
@@ -322,7 +327,7 @@ Run one-shot locally:
 
 ```powershell
 $env:WF2_CONTINUOUS = "false"
-go run ./cmd/workflow-ob-pending-dispatch
+go run ./workflows/wf2-ob-pending-dispatch/cmd
 ```
 
 Run in watch mode locally:
@@ -330,7 +335,7 @@ Run in watch mode locally:
 ```powershell
 $env:WF2_CONTINUOUS = "true"
 $env:WF2_POLL_INTERVAL_SECONDS = "5"
-go run ./cmd/workflow-ob-pending-dispatch
+go run ./workflows/wf2-ob-pending-dispatch/cmd
 ```
 
 ## Workflow 2.1: Drive ZIP CSV Consolidation -> R2 -> Filtered Sheet Import
@@ -435,7 +440,7 @@ Run one-shot locally:
 
 ```powershell
 $env:WF21_CONTINUOUS = "false"
-go run ./cmd/workflow-drive-csv-consolidation
+go run ./workflows/wf21-drive-csv-consolidation/cmd
 ```
 
 ## Render deployment (24/7)
@@ -443,7 +448,7 @@ go run ./cmd/workflow-drive-csv-consolidation
 Use the included `render.yaml` blueprint to deploy as a web service.
 
 Note:
-- `go-bot-workflow-drive-csv-consolidation` is configured with `runtime: docker` and uses `cmd/workflow-drive-csv-consolidation/Dockerfile.render`, which installs `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`.
+- `go-bot-workflow-drive-csv-consolidation` is configured with `runtime: docker` and uses `workflows/wf21-drive-csv-consolidation/Dockerfile.render`, which installs `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`.
 - `go-bot-sync-bot-config-groups` is configured as a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.

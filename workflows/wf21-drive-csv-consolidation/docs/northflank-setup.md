@@ -1,6 +1,6 @@
 # WF2.1 Complete Setup on Northflank (Production Runbook)
 
-This runbook deploys **WF2.1** (`cmd/workflow-drive-csv-consolidation`) on Northflank as an always-on service with:
+This runbook deploys **WF2.1** (`workflows/wf21-drive-csv-consolidation/cmd`) on Northflank as an always-on service with:
 
 - Google Drive ZIP polling
 - CSV consolidation and filtered Google Sheets import
@@ -15,7 +15,7 @@ This guide assumes **WF3 is removed** from this repository.
 WF2.1 is stateful. It writes cursor/status JSON files locally and expects those files to survive restarts.
 
 - Container build:
-  - Dockerfile: `/cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+  - Dockerfile: `/workflows/wf21-drive-csv-consolidation/Dockerfile.render`
   - Build context: `/`
 - Why this Dockerfile:
   - Includes `poppler-utils` and `imagemagick` for `WF21_SUMMARY_RENDER_MODE=pdf_png`
@@ -89,7 +89,7 @@ In service creation wizard:
 2. Connect/select your repository.
 3. Choose branch.
 4. Build method: `Dockerfile`.
-5. Dockerfile path: `/cmd/workflow-drive-csv-consolidation/Dockerfile.render`.
+5. Dockerfile path: `/workflows/wf21-drive-csv-consolidation/Dockerfile.render`.
 6. Build context: `/`.
 7. Create service.
 
@@ -281,7 +281,7 @@ UI path:
 Steps:
 
 1. Click `Deploy` (or `Redeploy`).
-2. In build logs verify Dockerfile path is `/cmd/workflow-drive-csv-consolidation/Dockerfile.render`.
+2. In build logs verify Dockerfile path is `/workflows/wf21-drive-csv-consolidation/Dockerfile.render`.
 3. Wait until deployment is `Running`.
 4. Confirm health check is `Healthy`.
 
@@ -467,7 +467,7 @@ Typical errors:
 
 Fix:
 
-- use Dockerfile `/cmd/workflow-drive-csv-consolidation/Dockerfile.render`
+- use Dockerfile `/workflows/wf21-drive-csv-consolidation/Dockerfile.render`
 - keep `WF21_SUMMARY_PDF_CONVERTER=pdftoppm` or `auto`
 
 ## 11. Northflank Docs Referenced
@@ -479,3 +479,4 @@ Fix:
 - Inject runtime variables/secrets: https://northflank.com/docs/v1/application/secure/inject-secrets
 - Run continuously: https://northflank.com/docs/v1/application/run/run-an-image-continuously
 - Run once/on schedule: https://northflank.com/docs/v1/application/run/run-an-image-once-or-on-a-schedule
+

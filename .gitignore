@@ -9,6 +9,8 @@ secrets/
 *.p12
 /google-credentials.json
 /service-account.json
+docs/
+/encopy.txt
 
 # Runtime data and logs
 data/*.json
