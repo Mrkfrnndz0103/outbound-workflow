@@ -325,6 +325,42 @@ If you want empty values to be pushed too (not recommended for secrets):
 powershell -ExecutionPolicy Bypass -File ./scripts/sync_railway_env.ps1 -EnvFile .env.example -IncludeEmpty -NoSkipDeploys
 ```
 
+### 4.8 Auto-import vars/secrets on new local machine (IDE folder open)
+
+Use Railway as the external source of truth, then pull to local `.env`.
+
+Files included:
+
+- Script: `scripts/pull_railway_env.ps1`
+- VS Code auto-task: `.vscode/tasks.json` (`runOn: folderOpen`)
+
+First-time setup on each machine:
+
+```powershell
+npm i -g @railway/cli
+railway login
+railway link --project <project-id> --environment <environment-id> --service <service-id>
+```
+
+Manual pull:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/pull_railway_env.ps1 -OutFile .env -FailIfUnavailable
+```
+
+Behavior:
+
+- On folder open in VS Code, the task tries to pull Railway vars into `.env`.
+- If CLI/link/auth is missing, task exits gracefully (no hard failure).
+- Existing `.env` is backed up to `.env.bak` before overwrite.
+- Secrets stay local because `.env` is gitignored.
+
+Important for VS Code:
+
+1. Open Command Palette
+2. Run `Tasks: Manage Automatic Tasks in Folder`
+3. Select `Allow Automatic Tasks in Folder`
+
 ## 5. Deploy on Railway
 
 UI path:
