@@ -1,0 +1,3 @@
+./main.go
+./newrelic_logs.go
+./summary_image_renderer.go
