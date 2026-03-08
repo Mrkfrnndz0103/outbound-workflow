@@ -212,6 +212,7 @@ WF21_SEATALK_GROUP_IDS=<group-id-1>,<group-id-2>
 ```
 
 `WF21_SEATALK_GROUP_ID` remains supported for single-group mode/backward compatibility.
+Set `WF21_SUMMARY_SEND_MIN_INTERVAL_SECONDS=5` for 5-second delay between groups/messages.
 
 ### 4.4 Summary render profile (`pdf_png`)
 
@@ -229,6 +230,7 @@ WF21_SUMMARY_EXTRA_IMAGES=
 
 WF21_SUMMARY_SYNC_CELL=config!B1
 WF21_SUMMARY_WAIT_SECONDS=5
+WF21_SUMMARY_SEND_MIN_INTERVAL_SECONDS=1
 WF21_SUMMARY_STABILITY_RUNS=3
 WF21_SUMMARY_STABILITY_WAIT_SECONDS=2
 

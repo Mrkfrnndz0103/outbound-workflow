@@ -158,6 +158,7 @@ type styledRangeSegment struct {
 func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheetsSvc *sheets.Service) (summaryImageSendResult, error) {
 	var result summaryImageSendResult
 	var exportHTTPClient *http.Client
+	sendMinInterval := effectiveSummarySendMinInterval(cfg)
 
 	if cfg.SummaryWaitAfterImport > 0 {
 		if err := waitWithContext(ctx, cfg.SummaryWaitAfterImport); err != nil {
@@ -279,7 +280,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			return result, fmt.Errorf("send summary caption to seatalk webhook: %w", err)
 		}
 		for _, img := range images {
-			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			if err = waitWithContext(ctx, sendMinInterval); err != nil {
 				return result, err
 			}
 			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk webhook", img.Label), func() error {
@@ -289,7 +290,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			}
 		}
 		for _, img := range extraImages {
-			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			if err = waitWithContext(ctx, sendMinInterval); err != nil {
 				return result, err
 			}
 			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk webhook", img.Label), func() error {
@@ -321,7 +322,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			continue
 		}
 		if groupIdx > 0 {
-			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			if err = waitWithContext(ctx, sendMinInterval); err != nil {
 				return result, err
 			}
 		}
@@ -331,7 +332,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			return result, fmt.Errorf("send summary caption to seatalk bot group=%s: %w", gid, err)
 		}
 		for _, img := range images {
-			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			if err = waitWithContext(ctx, sendMinInterval); err != nil {
 				return result, err
 			}
 			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot group=%s", img.Label, gid), func() error {
@@ -341,7 +342,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 			}
 		}
 		for _, img := range extraImages {
-			if err = waitWithContext(ctx, summarySendMinInterval); err != nil {
+			if err = waitWithContext(ctx, sendMinInterval); err != nil {
 				return result, err
 			}
 			if err = sendSummaryWithRetry(ctx, fmt.Sprintf("send %s summary image to seatalk bot group=%s", img.Label, gid), func() error {
@@ -352,6 +353,13 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		}
 	}
 	return result, nil
+}
+
+func effectiveSummarySendMinInterval(cfg workflowConfig) time.Duration {
+	if cfg.SummarySendMinInterval <= 0 {
+		return summarySendMinInterval
+	}
+	return cfg.SummarySendMinInterval
 }
 
 func sendSummaryWithRetry(ctx context.Context, op string, send func() error) error {
@@ -1375,7 +1383,7 @@ func currentSummaryCaptionTime(cfg workflowConfig, now time.Time) time.Time {
 func buildSummaryCaption(ts time.Time) string {
 	return fmt.Sprintf(
 		"@All\nOutbound Pending for Dispatch as of %s. Thanks!",
-		ts.Format("3:04 PM Jan-02"),
+		ts.Format("3:04PM Jan-02"),
 	)
 }
 

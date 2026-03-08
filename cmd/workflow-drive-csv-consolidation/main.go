@@ -61,6 +61,7 @@ const (
 	defaultSummaryExtraEnabled    = true
 	defaultSummaryExtraImages     = ""
 	defaultSummaryWaitAfterImport = 5 * time.Second
+	defaultSummarySendMinInterval = 1 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
 	defaultSummaryRenderMode      = "styled"
@@ -151,6 +152,7 @@ type workflowConfig struct {
 	SummaryPDFStrict       bool
 	SummaryImageMaxWidthPx int
 	SummaryImageMaxBase64  int
+	SummarySendMinInterval time.Duration
 	SummarySendHTTPTimeout time.Duration
 	SummaryTimezone        string
 	SummaryLocation        *time.Location
@@ -291,7 +293,7 @@ func main() {
 	)
 	if cfg.SummarySendEnabled {
 		logger.Printf(
-			"summary snapshot enabled mode=%s target_source=%s target_group=%s target_groups=%q sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
+			"summary snapshot enabled mode=%s target_source=%s target_group=%s target_groups=%q sheet=%s tab=%q range=%s second_image_enabled=%t second_tab=%q second_ranges=%q extra_images_enabled=%t extra_images=%q sync_cell=%q wait_after_import=%s send_min_interval=%s stability_runs=%d stability_wait=%s render_mode=%s render_scale=%d auto_fit_columns=%t pdf_dpi=%d pdf_converter=%s pdf_strict=%t timezone=%s",
 			cfg.SummarySeaTalkMode,
 			cfg.SummaryTargetSource,
 			cfg.SummarySeaTalkGroupID,
@@ -306,6 +308,7 @@ func main() {
 			formatSummaryImageRefs(cfg.SummaryExtraImages),
 			cfg.SummarySyncCell,
 			cfg.SummaryWaitAfterImport,
+			cfg.SummarySendMinInterval,
 			cfg.SummaryStabilityRuns,
 			cfg.SummaryStabilityWait,
 			cfg.SummaryRenderMode,
@@ -1038,6 +1041,7 @@ func loadConfig() (workflowConfig, error) {
 		SummaryPDFStrict:       summaryPDFStrict,
 		SummaryImageMaxWidthPx: getIntEnv("WF21_SUMMARY_IMAGE_MAX_WIDTH_PX", defaultSummaryImageMaxWidthPx),
 		SummaryImageMaxBase64:  getIntEnv("WF21_SUMMARY_IMAGE_MAX_BASE64_BYTES", defaultSummaryImageMaxBase64),
+		SummarySendMinInterval: getDurationSeconds("WF21_SUMMARY_SEND_MIN_INTERVAL_SECONDS", int(defaultSummarySendMinInterval/time.Second)),
 		SummarySendHTTPTimeout: getDurationSeconds("WF21_SUMMARY_HTTP_TIMEOUT_SECONDS", int(defaultSummaryHTTPTimeout/time.Second)),
 		SummaryTimezone:        summaryTimezone,
 		SummaryLocation:        summaryLocation,
@@ -1137,6 +1141,9 @@ func loadConfig() (workflowConfig, error) {
 	}
 	if cfg.SummaryImageMaxBase64 < 512*1024 {
 		cfg.SummaryImageMaxBase64 = defaultSummaryImageMaxBase64
+	}
+	if cfg.SummarySendMinInterval < 1*time.Second {
+		cfg.SummarySendMinInterval = 1 * time.Second
 	}
 	if cfg.SummarySendEnabled && !cfg.DryRun && strings.TrimSpace(cfg.SummarySyncCell) == "" {
 		return workflowConfig{}, errors.New("WF21_SUMMARY_SYNC_CELL is required when summary send is enabled")
