@@ -306,7 +306,13 @@ func (c *Client) refreshAccessToken(ctx context.Context) error {
 		return err
 	}
 	if parsed.Code != openAPICodeOK {
-		return fmt.Errorf("failed to get app access token, code=%d message=%s", parsed.Code, parsed.Message)
+		return fmt.Errorf(
+			"failed to get app access token: code=%d message=%q app_id=%s base_url=%s",
+			parsed.Code,
+			strings.TrimSpace(parsed.Message),
+			maskIdentifier(c.appID, 4),
+			c.baseURL,
+		)
 	}
 	if parsed.AppAccessToken == "" || parsed.Expire <= 0 {
 		return errors.New("invalid access token response")
@@ -433,4 +439,19 @@ func (c *Client) requestWithoutAuth(ctx context.Context, method string, path str
 		return fmt.Errorf("decode seatalk response: %w", err)
 	}
 	return nil
+}
+
+func maskIdentifier(v string, keep int) string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return trimmed
+	}
+	if keep < 1 {
+		keep = 1
+	}
+	runes := []rune(trimmed)
+	if len(runes) <= keep {
+		return trimmed
+	}
+	return string(runes[:keep]) + "***"
 }

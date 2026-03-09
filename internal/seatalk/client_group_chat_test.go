@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -191,5 +192,42 @@ func TestClientListJoinedGroupChatsRefreshToken(t *testing.T) {
 	}
 	if authCalls < 2 {
 		t.Fatalf("expected token refresh, authCalls=%d", authCalls)
+	}
+}
+
+func TestClientSendTextToGroupAuthErrorIncludesContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/app_access_token":
+			_, _ = w.Write([]byte(`{"code":1000,"message":"","app_access_token":"","expire":0}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(ClientConfig{
+		AppID:     "app-123456",
+		AppSecret: "app-secret",
+		BaseURL:   server.URL,
+		Timeout:   2 * time.Second,
+	})
+
+	err := client.SendTextToGroup(context.Background(), "group-1", "hello", 1)
+	if err == nil {
+		t.Fatalf("expected auth error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "failed to get app access token: code=1000") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(got, `message=""`) {
+		t.Fatalf("expected quoted empty message, got %v", err)
+	}
+	if !strings.Contains(got, "app_id=app-***") {
+		t.Fatalf("expected masked app id in error, got %v", err)
+	}
+	if !strings.Contains(got, "base_url="+server.URL) {
+		t.Fatalf("expected base_url in error, got %v", err)
 	}
 }

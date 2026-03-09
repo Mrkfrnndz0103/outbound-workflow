@@ -109,6 +109,7 @@ Imported output columns (in order):
 - `WF21_SHEETS_WRITE_RETRY_MAX_MS` (default `15000`)
 - `WF21_TEMP_DIR` (optional temp directory override)
 - `WF21_SUMMARY_SEND_ENABLED` (default `true`)
+- `WF21_USE_BOT_CONFIG` (default `false`; when `true` and `BOT_CONFIG_SHEET_ID` is set, the `wf21` row in `bot_config` overrides summary send config)
 - `WF21_SUMMARY_SEATALK_MODE` (default `bot`)
 - `WF21_SEATALK_GROUP_ID` (fallback to `WF2_SEATALK_GROUP_ID`)
 - `WF21_SEATALK_APP_ID` / `WF21_SEATALK_APP_SECRET` (fallback to `WF2_SEATALK_APP_ID` / `WF2_SEATALK_APP_SECRET`, then `SEATALK_APP_ID` / `SEATALK_APP_SECRET`)

@@ -533,6 +533,8 @@ Bot mode:
 
 - `WF21_SUMMARY_SEATALK_MODE=bot`
 - app ID / app secret / group ID are valid
+- `WF21_USE_BOT_CONFIG=false` unless you intentionally want the shared `bot_config` row to override WF21 env vars
+- if `WF21_USE_BOT_CONFIG=true`, verify the `wf21` row app ID/app secret in `bot_config`
 - bot is in target group
 
 Webhook mode:

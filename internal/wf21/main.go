@@ -268,7 +268,7 @@ type workflowLockState struct {
 }
 
 type runOptions struct {
-	ForceOneShot       bool
+	ForceOneShot        bool
 	DisableHealthServer bool
 }
 
@@ -908,7 +908,7 @@ func loadConfig() (workflowConfig, error) {
 	if err != nil {
 		return workflowConfig{}, err
 	}
-	useBotConfig, err := getBoolEnv("WF21_USE_BOT_CONFIG", true)
+	useBotConfig, err := getBoolEnv("WF21_USE_BOT_CONFIG", false)
 	if err != nil {
 		return workflowConfig{}, err
 	}

@@ -381,7 +381,7 @@ Defaults below are from WF2.1 runtime code.
 | `WF21_SEATALK_APP_SECRET` | Bot mode | empty | Fallbacks: `WF2_SEATALK_APP_SECRET`, `SEATALK_APP_SECRET`. |
 | `WF21_SEATALK_BASE_URL` | No | `https://openapi.seatalk.io` | Fallbacks: `WF2_SEATALK_BASE_URL`, `SEATALK_BASE_URL`. |
 | `WF21_SEATALK_WEBHOOK_URL` | Webhook mode | empty | Fallback: `SEATALK_SYSTEM_WEBHOOK_URL`. |
-| `WF21_USE_BOT_CONFIG` | No | `true` | When true + `BOT_CONFIG_SHEET_ID`, `wf21` row can override send config. |
+| `WF21_USE_BOT_CONFIG` | No | `false` | When true + `BOT_CONFIG_SHEET_ID`, `wf21` row can override send config. |
 | `BOT_CONFIG_SHEET_ID` | Optional | empty | Required only if using bot_config override mode. |
 | `BOT_CONFIG_TAB` | Optional | `bot_config` | Bot config tab name. |
 | `WF21_SUMMARY_SHEET_ID` | No | `WF21_DESTINATION_SHEET_ID` | Summary source sheet ID. |
@@ -435,6 +435,8 @@ Fix for bot mode:
 
 - verify `WF21_SUMMARY_SEATALK_MODE=bot`
 - verify `WF21_SEATALK_APP_ID`, `WF21_SEATALK_APP_SECRET`, `WF21_SEATALK_GROUP_ID`
+- verify `WF21_USE_BOT_CONFIG=false` unless you intentionally want the shared `bot_config` row to override WF21 env vars
+- if `WF21_USE_BOT_CONFIG=true`, verify the `wf21` row app ID/app secret in `bot_config`
 - verify bot is in target group
 
 Fix for webhook mode:

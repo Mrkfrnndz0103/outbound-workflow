@@ -3,6 +3,7 @@ package wf21
 import (
 	"errors"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -191,6 +192,36 @@ func TestShouldUseStyledFallbackHonorsStrictMode(t *testing.T) {
 	}
 }
 
+func TestLoadConfigDefaultDoesNotUseBotConfig(t *testing.T) {
+	setWF21ConfigTestEnv(t)
+	t.Setenv("BOT_CONFIG_SHEET_ID", "sheet-123")
+	if err := os.Unsetenv("WF21_USE_BOT_CONFIG"); err != nil {
+		t.Fatalf("unset WF21_USE_BOT_CONFIG: %v", err)
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig returned unexpected error: %v", err)
+	}
+	if cfg.SummaryTargetSource != "env" {
+		t.Fatalf("expected env target source, got %q", cfg.SummaryTargetSource)
+	}
+}
+
+func TestLoadConfigBotConfigRequiresExplicitOptIn(t *testing.T) {
+	setWF21ConfigTestEnv(t)
+	t.Setenv("BOT_CONFIG_SHEET_ID", "sheet-123")
+	t.Setenv("WF21_USE_BOT_CONFIG", "true")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatalf("expected loadConfig to fail when bot_config is enabled with invalid credentials")
+	}
+	if !strings.Contains(err.Error(), "create sheets service for bot_config") {
+		t.Fatalf("expected bot_config setup error, got %v", err)
+	}
+}
+
 func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	row := []string{"TO-1", "SPX-1", "Receiver"}
 	picked := pickColumns(row, []int{0, 1, 2, 0})
@@ -200,6 +231,44 @@ func TestPickColumnsSupportsDuplicateIndexes(t *testing.T) {
 	if picked[0] != "TO-1" || picked[3] != "TO-1" {
 		t.Fatalf("expected duplicated TO Number column, got: %#v", picked)
 	}
+}
+
+func setWF21ConfigTestEnv(t *testing.T) {
+	t.Helper()
+
+	blankVars := []string{
+		"BOT_CONFIG_SHEET_ID",
+		"BOT_CONFIG_TAB",
+		"GOOGLE_APPLICATION_CREDENTIALS",
+		"SEATALK_APP_ID",
+		"SEATALK_APP_SECRET",
+		"SEATALK_BASE_URL",
+		"SEATALK_SYSTEM_WEBHOOK_URL",
+		"WF2_SEATALK_APP_ID",
+		"WF2_SEATALK_APP_SECRET",
+		"WF2_SEATALK_BASE_URL",
+		"WF2_SEATALK_GROUP_ID",
+		"WF2_SEATALK_GROUP_IDS",
+		"WF21_GOOGLE_CREDENTIALS_FILE",
+		"WF21_SEATALK_APP_ID",
+		"WF21_SEATALK_APP_SECRET",
+		"WF21_SEATALK_BASE_URL",
+		"WF21_SEATALK_GROUP_ID",
+		"WF21_SEATALK_GROUP_IDS",
+		"WF21_SEATALK_WEBHOOK_URL",
+		"WF21_USE_BOT_CONFIG",
+	}
+	for _, name := range blankVars {
+		t.Setenv(name, "")
+	}
+
+	t.Setenv("WF21_GOOGLE_CREDENTIALS_JSON", "{")
+	t.Setenv("WF21_R2_ACCOUNT_ID", "acct")
+	t.Setenv("WF21_R2_BUCKET", "bucket")
+	t.Setenv("WF21_R2_ACCESS_KEY_ID", "access")
+	t.Setenv("WF21_R2_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("WF21_SUMMARY_RENDER_MODE", "styled")
+	t.Setenv("WF21_SUMMARY_SEND_ENABLED", "false")
 }
 
 func TestSelectPendingZipFilesProcessesAllNewerFiles(t *testing.T) {
