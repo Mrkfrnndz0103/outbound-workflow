@@ -63,9 +63,9 @@ const (
 	defaultSummarySecondRanges    = "E154:Y184"
 	defaultSummaryExtraEnabled    = true
 	defaultSummaryExtraImages     = ""
-	defaultSummaryWaitAfterImport = 5 * time.Second
+	defaultSummaryWaitAfterImport = 1 * time.Second
 	defaultSummarySendMinInterval = 1 * time.Second
-	defaultSummaryStabilityWait   = 2 * time.Second
+	defaultSummaryStabilityWait   = 1 * time.Second
 	defaultSummaryStabilityRuns   = 3
 	defaultSummaryRenderMode      = "pdf_png"
 	defaultSummaryRenderScale     = 2

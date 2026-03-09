@@ -1,6 +1,7 @@
 package wf21
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"os"
@@ -189,6 +190,83 @@ func TestShouldUseStyledFallbackHonorsStrictMode(t *testing.T) {
 	strict := workflowConfig{SummaryPDFStrict: true}
 	if shouldUseStyledFallback(strict, retryableErr) {
 		t.Fatalf("expected no fallback in strict mode")
+	}
+}
+
+func TestSummarySnapshotDigestChangesWhenFormattingChanges(t *testing.T) {
+	base := styledRangeData{
+		Rows:       1,
+		Cols:       1,
+		RowHeights: []int{24},
+		ColWidths:  []int{120},
+		Cells: [][]styledCell{
+			{
+				{
+					Text:         "done",
+					FontFamily:   "Arial",
+					FontSize:     10,
+					WrapStrategy: "OVERFLOW_CELL",
+				},
+			},
+		},
+	}
+
+	left, err := summarySnapshotDigest(base)
+	if err != nil {
+		t.Fatalf("summarySnapshotDigest returned error: %v", err)
+	}
+
+	changed := base
+	changed.Cells = [][]styledCell{
+		{
+			base.Cells[0][0],
+		},
+	}
+	changed.Cells[0][0].Bold = true
+
+	right, err := summarySnapshotDigest(changed)
+	if err != nil {
+		t.Fatalf("summarySnapshotDigest returned error: %v", err)
+	}
+	if left == right {
+		t.Fatalf("expected formatting change to alter digest")
+	}
+}
+
+func TestWaitForStableDigestReturnsTrueOnConsecutiveMatch(t *testing.T) {
+	seq := []string{"a", "a"}
+	idx := 0
+
+	stable, err := waitForStableDigest(context.Background(), 3, 0, func(context.Context) (string, error) {
+		if idx >= len(seq) {
+			return seq[len(seq)-1], nil
+		}
+		value := seq[idx]
+		idx++
+		return value, nil
+	})
+	if err != nil {
+		t.Fatalf("waitForStableDigest returned error: %v", err)
+	}
+	if !stable {
+		t.Fatalf("expected stable digest")
+	}
+}
+
+func TestWaitForStableDigestReturnsFalseWhenDigestKeepsChanging(t *testing.T) {
+	seq := []string{"a", "b", "c"}
+	idx := 0
+
+	stable, err := waitForStableDigest(context.Background(), 3, 0, func(context.Context) (string, error) {
+		value := seq[idx]
+		idx++
+		return value, nil
+	})
+	if err != nil {
+		t.Fatalf("waitForStableDigest returned error: %v", err)
+	}
+	if stable {
+		t.Fatalf("expected unstable digest")
 	}
 }
 

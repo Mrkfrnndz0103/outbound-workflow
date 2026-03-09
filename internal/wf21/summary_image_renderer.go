@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -166,7 +167,7 @@ func sendSummarySnapshotToSeaTalk(ctx context.Context, cfg workflowConfig, sheet
 		}
 	}
 
-	stable, err := waitForStableRangeDigest(ctx, sheetsSvc, cfg.SummarySheetID, cfg.SummaryTab, cfg.SummaryRange, cfg.SummaryStabilityRuns, cfg.SummaryStabilityWait)
+	stable, err := waitForStableSummarySnapshot(ctx, cfg, sheetsSvc)
 	if err != nil {
 		return result, err
 	}
@@ -1394,23 +1395,28 @@ func buildSummaryCaptionForBot(ts time.Time) string {
 	)
 }
 
-func waitForStableRangeDigest(
+func waitForStableSummarySnapshot(ctx context.Context, cfg workflowConfig, svc *sheets.Service) (bool, error) {
+	return waitForStableDigest(ctx, cfg.SummaryStabilityRuns, cfg.SummaryStabilityWait, func(ctx context.Context) (string, error) {
+		return captureStyledRangeDigest(ctx, svc, cfg.SummarySheetID, cfg.SummaryTab, cfg.SummaryRange)
+	})
+}
+
+func waitForStableDigest(
 	ctx context.Context,
-	svc *sheets.Service,
-	sheetID, tab, captureRange string,
 	runs int,
 	interval time.Duration,
+	capture func(context.Context) (string, error),
 ) (bool, error) {
 	if runs < 1 {
 		runs = 1
 	}
-	if interval <= 0 {
-		interval = 1 * time.Second
+	if interval < 0 {
+		interval = 0
 	}
 
 	previous := ""
 	for i := 1; i <= runs; i++ {
-		digest, err := captureValuesDigest(ctx, svc, sheetID, tab, captureRange)
+		digest, err := capture(ctx)
 		if err != nil {
 			return false, err
 		}
@@ -1453,33 +1459,20 @@ func normalizeSheetTabName(tab string) string {
 	return strings.ReplaceAll(t, "''", "'")
 }
 
-func captureValuesDigest(ctx context.Context, svc *sheets.Service, sheetID, tab, captureRange string) (string, error) {
-	rangeRef := buildSheetRangeRef(tab, captureRange)
-	resp, err := svc.Spreadsheets.Values.BatchGet(sheetID).
-		Ranges(rangeRef).
-		ValueRenderOption("FORMATTED_VALUE").
-		Context(ctx).
-		Do()
+func captureStyledRangeDigest(ctx context.Context, svc *sheets.Service, sheetID, tab, captureRange string) (string, error) {
+	data, err := readStyledRange(ctx, svc, sheetID, tab, captureRange)
 	if err != nil {
-		return "", fmt.Errorf("read snapshot values: %w", err)
+		return "", err
 	}
+	return summarySnapshotDigest(data)
+}
 
-	var builder strings.Builder
-	for idx, vr := range resp.ValueRanges {
-		builder.WriteString(fmt.Sprintf("[%d]%s\n", idx, vr.Range))
-		for _, row := range vr.Values {
-			for col := range row {
-				if col > 0 {
-					builder.WriteRune('\t')
-				}
-				builder.WriteString(strings.TrimSpace(fmt.Sprint(row[col])))
-			}
-			builder.WriteRune('\n')
-		}
-		builder.WriteString("--\n")
+func summarySnapshotDigest(data styledRangeData) (string, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("marshal styled snapshot: %w", err)
 	}
-
-	sum := sha256.Sum256([]byte(builder.String()))
+	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
 }
 
