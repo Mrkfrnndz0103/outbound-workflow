@@ -67,7 +67,7 @@ const (
 	defaultSummarySendMinInterval = 1 * time.Second
 	defaultSummaryStabilityWait   = 2 * time.Second
 	defaultSummaryStabilityRuns   = 3
-	defaultSummaryRenderMode      = "styled"
+	defaultSummaryRenderMode      = "pdf_png"
 	defaultSummaryRenderScale     = 2
 	defaultSummaryAutoFitColumns  = false
 	defaultSummaryPDFDPI          = 180

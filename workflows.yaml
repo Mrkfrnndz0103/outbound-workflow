@@ -18,6 +18,8 @@ workflows:
     env:
       WF21_CONTINUOUS: "true"
       WF21_POLL_INTERVAL_SECONDS: "30"
+      WF21_SUMMARY_RENDER_MODE: "pdf_png"
+      WF21_SUMMARY_PDF_CONVERTER: "auto"
 
   sync_bot_config_groups:
     enabled: true

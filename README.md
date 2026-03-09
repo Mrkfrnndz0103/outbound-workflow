@@ -422,7 +422,7 @@ Optional env:
 - `WF21_SUMMARY_WAIT_SECONDS` (default `5`)
 - `WF21_SUMMARY_STABILITY_RUNS` (default `3`)
 - `WF21_SUMMARY_STABILITY_WAIT_SECONDS` (default `2`)
-- `WF21_SUMMARY_RENDER_MODE` (default `styled`; `pdf_png` uses Google Sheets PDF export -> PNG conversion for closer visual fidelity)
+- `WF21_SUMMARY_RENDER_MODE` (default `pdf_png`; uses Google Sheets PDF export -> PNG conversion for closer visual fidelity)
 - `WF21_SUMMARY_RENDER_SCALE` (default `2`)
 - `WF21_SUMMARY_AUTO_FIT_COLUMNS` (default `false`; set `false` to preserve sheet layout, `true` to auto-resize columns for long text)
 - `WF21_SUMMARY_PDF_DPI` (default `180`; used when `WF21_SUMMARY_RENDER_MODE=pdf_png`)
