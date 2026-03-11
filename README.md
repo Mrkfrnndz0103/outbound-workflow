@@ -447,34 +447,18 @@ go run ./workflows/wf21-drive-csv-consolidation/cmd
 
 ## Deployment Platforms
 
-Recommended split for this repo:
+### Render (`wf2.1` only)
 
-- Render:
-  - `go-bot-seatalk-bot`
-  - `go-bot-workflow-mm-lh-provided` (`wf1`)
-  - `go-bot-workflow2-1-drive-csv-consolidation` (`wf2.1`)
-  - `go-bot-workflow3-mdt-updates` (`wf3`)
-  - `go-bot-sync-bot-config-groups` cron
-- Railway:
-  - `wf3` fallback only
-
-### Render (bot + wf1 + wf2.1 + wf3)
-
-Use the included `render.yaml` blueprint for the Render-managed services.
+Use the included `render.yaml` blueprint for the Render-managed `wf2.1` service only.
 
 Notes:
-- `wf2.1` and `wf3` run as dedicated Docker web services because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
+- `render.yaml` provisions only `go-bot-workflow2-1-drive-csv-consolidation`.
+- `wf2.1` runs as a dedicated Docker web service because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
 - `wf2.1` uses a persistent disk mounted at `/var/data` for its state/status files.
-- `wf3` runs as a dedicated Docker web service because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
-- `wf3` uses a persistent disk mounted at `/var/data` for its state/status files.
-- `render.yaml` is the deployment source of truth for `wf2.1`.
-- `go-bot-sync-bot-config-groups` remains a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.
 2. In Render, create a new Blueprint and select the repo.
 3. Set secret env vars in Render:
-   - `SEATALK_SYSTEM_WEBHOOK_URL`
-   - `WF1_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
    - `WF21_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
    - `WF21_R2_ACCOUNT_ID`
    - `WF21_R2_BUCKET`
@@ -483,22 +467,15 @@ Notes:
    - `WF21_SEATALK_APP_ID`
    - `WF21_SEATALK_APP_SECRET`
    - `WF21_SEATALK_GROUP_ID` (or `WF21_SEATALK_WEBHOOK_URL` if you switch to webhook mode)
-   - `WF3_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
-   - `WF3_SEATALK_APP_ID`
-   - `WF3_SEATALK_APP_SECRET`
-   - `WF3_SEATALK_GROUP_ID`
-4. After first deploy, set:
-   - `WF1_SELF_PING_URL=https://<your-render-service>.onrender.com/healthz`
 
 WF2.1 setup guide:
 - `docs/wf21-render-setup.md`
 
-WF3 setup guide:
-- `docs/wf3-render-setup.md`
+### Other workflows
 
-### Railway
-
-- `wf3` Railway config-as-code file: `workflows/wf3-mdt-updates/railway.toml`
+- `wf1`, `wf3`, the bot service, and the bot-config sync cron are no longer part of the checked-in Render Blueprint.
+- If you still need them on Render, define them as separate manual services or keep them in a different blueprint file.
+- `wf3` Railway config-as-code file remains at `workflows/wf3-mdt-updates/railway.toml`.
 
 ### Render env reference file
 

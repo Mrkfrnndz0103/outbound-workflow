@@ -27,9 +27,9 @@ Why this is the right shape:
 
 ## Render blueprint
 
-WF3 is defined in `render.yaml` as a separate service from `wf1`.
+WF3 is not included in the current checked-in `render.yaml`.
 
-Managed runtime defaults in the blueprint:
+Recommended runtime defaults for the service:
 - `WF3_PDF_CONVERTER=pdftoppm`
 - `WF3_ENABLE_HEALTH_SERVER=true`
 - `WF3_STATE_FILE=/var/data/workflow3-mdt-updates-state.json`
@@ -43,16 +43,14 @@ Unmanaged values you must set in Render:
 
 ## Render UI setup
 
-1. Push the repo branch that contains the WF3 service in `render.yaml`.
-2. In Render, create or open the Blueprint linked to this repository.
-3. Sync the Blueprint changes so Render creates `go-bot-workflow3-mdt-updates`.
-4. Open the WF3 service in Render Dashboard.
-5. In `Environment`, set the unmanaged `WF3_*` secret values.
-6. In `Disks`, confirm the persistent disk is mounted at `/var/data`.
-7. In `Settings`, confirm:
+1. Create a dedicated Render web service for WF3 using `workflows/wf3-mdt-updates/Dockerfile.render`.
+2. Open the WF3 service in Render Dashboard.
+3. In `Environment`, set the unmanaged `WF3_*` secret values.
+4. In `Disks`, confirm the persistent disk is mounted at `/var/data`.
+5. In `Settings`, confirm:
    - Auto-Deploy: off
    - Health Check Path: `/healthz`
-8. Deploy the service manually.
+6. Deploy the service manually.
 
 ## First safe deploy
 
