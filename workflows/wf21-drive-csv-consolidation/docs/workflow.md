@@ -137,13 +137,15 @@ PDF mode dependency note:
   - Poppler (`pdftoppm` in PATH), or
   - ImageMagick (`magick` in PATH)
 
-## Railway note
+## Render note
 
-Railway is the recommended hosted path for WF2.1 when you need `WF21_SUMMARY_RENDER_MODE=pdf_png`.
+Render is the primary hosted path for WF2.1 when you need `WF21_SUMMARY_RENDER_MODE=pdf_png`.
 
 - `workflows/wf21-drive-csv-consolidation/Dockerfile.render` installs Poppler (`pdftoppm`) and ImageMagick (`magick`).
-- `workflows/wf21-drive-csv-consolidation/railway.toml` pins Railway to that Dockerfile and `/healthz`.
-- Use a Railway volume mounted at `/data` for `WF21_STATE_FILE` and `WF21_STATUS_FILE`.
+- `render.yaml` defines the `go-bot-workflow2-1-drive-csv-consolidation` Docker web service.
+- Use the Render persistent disk mounted at `/var/data` for `WF21_STATE_FILE` and `WF21_STATUS_FILE`.
+- Keep the service at a single instance only.
+- Full UI runbook: `docs/wf21-render-setup.md`.
 - This workflow exposes `GET /healthz` and `GET /status` (when `WF21_STATUS_FILE` is enabled).
 
 ## Quick run examples

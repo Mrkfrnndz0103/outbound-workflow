@@ -452,20 +452,22 @@ Recommended split for this repo:
 - Render:
   - `go-bot-seatalk-bot`
   - `go-bot-workflow-mm-lh-provided` (`wf1`)
+  - `go-bot-workflow2-1-drive-csv-consolidation` (`wf2.1`)
   - `go-bot-workflow3-mdt-updates` (`wf3`)
   - `go-bot-sync-bot-config-groups` cron
 - Railway:
-  - `wf2.1` (`workflows/wf21-drive-csv-consolidation/cmd`)
+  - `wf3` fallback only
 
-### Render (bot + wf1 + wf3)
+### Render (bot + wf1 + wf2.1 + wf3)
 
 Use the included `render.yaml` blueprint for the Render-managed services.
 
 Notes:
+- `wf2.1` and `wf3` run as dedicated Docker web services because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
+- `wf2.1` uses a persistent disk mounted at `/var/data` for its state/status files.
 - `wf3` runs as a dedicated Docker web service because PDF-to-PNG conversion depends on Poppler/ImageMagick in the container image.
 - `wf3` uses a persistent disk mounted at `/var/data` for its state/status files.
-- `wf2.1` runs on Railway because `WF21_SUMMARY_RENDER_MODE=pdf_png` depends on Poppler/ImageMagick in the WF21 Docker image.
-- `render.yaml` is not the deployment source of truth for `wf2.1`.
+- `render.yaml` is the deployment source of truth for `wf2.1`.
 - `go-bot-sync-bot-config-groups` remains a Render cron service and runs daily (`0 0 * * *` UTC) to refresh `bot_config!D2:E`.
 
 1. Push this repo to GitHub.
@@ -473,6 +475,14 @@ Notes:
 3. Set secret env vars in Render:
    - `SEATALK_SYSTEM_WEBHOOK_URL`
    - `WF1_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
+   - `WF21_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
+   - `WF21_R2_ACCOUNT_ID`
+   - `WF21_R2_BUCKET`
+   - `WF21_R2_ACCESS_KEY_ID`
+   - `WF21_R2_SECRET_ACCESS_KEY`
+   - `WF21_SEATALK_APP_ID`
+   - `WF21_SEATALK_APP_SECRET`
+   - `WF21_SEATALK_GROUP_ID` (or `WF21_SEATALK_WEBHOOK_URL` if you switch to webhook mode)
    - `WF3_GOOGLE_CREDENTIALS_JSON` (entire service-account JSON string)
    - `WF3_SEATALK_APP_ID`
    - `WF3_SEATALK_APP_SECRET`
@@ -480,13 +490,14 @@ Notes:
 4. After first deploy, set:
    - `WF1_SELF_PING_URL=https://<your-render-service>.onrender.com/healthz`
 
+WF2.1 setup guide:
+- `docs/wf21-render-setup.md`
+
 WF3 setup guide:
 - `docs/wf3-render-setup.md`
 
 ### Railway
 
-- `wf2.1` config-as-code file: `workflows/wf21-drive-csv-consolidation/railway.toml`
-- `wf2.1` guide: `workflows/wf21-drive-csv-consolidation/docs/railway-setup.md`
 - `wf3` Railway config-as-code file: `workflows/wf3-mdt-updates/railway.toml`
 
 ### Render env reference file

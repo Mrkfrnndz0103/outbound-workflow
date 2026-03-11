@@ -960,13 +960,12 @@ func loadConfig() (workflowConfig, error) {
 	newRelicSource := firstNonEmpty(strings.TrimSpace(os.Getenv("WF21_NEWRELIC_SOURCE")), workflowName)
 	newRelicService := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_NEWRELIC_SERVICE")),
+		strings.TrimSpace(os.Getenv("RENDER_SERVICE_NAME")),
 		strings.TrimSpace(os.Getenv("SITE_NAME")),
-		strings.TrimSpace(os.Getenv("RAILWAY_SERVICE_NAME")),
 		"wf21-drive-csv-consolidation",
 	)
 	newRelicEnvironment := firstNonEmpty(
 		strings.TrimSpace(os.Getenv("WF21_NEWRELIC_ENVIRONMENT")),
-		strings.TrimSpace(os.Getenv("RAILWAY_ENVIRONMENT_NAME")),
 		"production",
 	)
 	summarySeaTalkAppID := strings.TrimSpace(firstNonEmpty(
