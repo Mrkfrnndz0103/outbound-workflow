@@ -5,7 +5,6 @@ services:
     plan: starter
     autoDeployTrigger: "off"
     healthCheckPath: /healthz
-    maxShutdownDelaySeconds: 300
     dockerfilePath: workflows/wf21-drive-csv-consolidation/Dockerfile.render
     dockerContext: .
     disk:
