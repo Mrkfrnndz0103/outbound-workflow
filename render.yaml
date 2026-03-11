@@ -142,7 +142,7 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: WF21_GOOGLE_CREDENTIALS_FILE
+      - key: WF21_GOOGLE_CREDENTIALS_JSON
         value: ""
       - key: BOT_CONFIG_SHEET_ID
         value: 1pLN46ZKWJIsidswMeoxhZwoacuFMR08sCaTFG6mLytc
