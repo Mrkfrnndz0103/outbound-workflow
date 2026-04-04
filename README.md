@@ -475,6 +475,7 @@ WF2.1 setup guide:
 
 - `wf1`, `wf3`, the bot service, and the bot-config sync cron are no longer part of the checked-in Render Blueprint.
 - If you still need them on Render, define them as separate manual services or keep them in a different blueprint file.
+- `wf1` now supports both entrypoints: the current `./workflows/wf1-mm-lh-provided/cmd` path and the legacy Render path `./cmd/workflow-mm-lh-provided`.
 - `wf3` Railway config-as-code file remains at `workflows/wf3-mdt-updates/railway.toml`.
 
 ### Render env reference file

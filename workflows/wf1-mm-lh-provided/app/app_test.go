@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -49,9 +49,9 @@ func TestBuildMessage(t *testing.T) {
 
 func TestHasRequiredMessageFields(t *testing.T) {
 	valid := sheetRow{
-		PlateNumber:       "ABC123",
-		LHType:            "lh",
-		ProvideTime:       "pv",
+		PlateNumber: "ABC123",
+		LHType:      "lh",
+		ProvideTime: "pv",
 	}
 	if !valid.hasRequiredMessageFields() {
 		t.Fatalf("expected required fields to be valid")
